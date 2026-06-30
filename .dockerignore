@@ -1,0 +1,11 @@
+node_modules/
+.venv-whisper/
+dist/
+dist-server/
+data/
+.env
+.git/
+.DS_Store
+coverage/
+.vite/
+npm-debug.log*

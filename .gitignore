@@ -1,0 +1,9 @@
+node_modules/
+.venv-whisper/
+dist/
+dist-server/
+data/
+.env
+.DS_Store
+coverage/
+.vite/

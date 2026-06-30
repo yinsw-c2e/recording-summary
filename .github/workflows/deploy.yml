@@ -1,0 +1,134 @@
+name: Deploy Recording Summary
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-recording-summary-production
+  cancel-in-progress: true
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.TENCENT_CLOUD_HOST }}
+      DEPLOY_USER: ${{ secrets.TENCENT_CLOUD_USER }}
+      DEPLOY_KEY: ${{ secrets.TENCENT_CLOUD_SSH_KEY }}
+      DEPLOY_PORT: ${{ secrets.TENCENT_CLOUD_PORT || '22' }}
+      DEPLOY_DIR: /opt/recording-summary
+      DATA_DIR: /var/lib/recording-summary
+      PUBLIC_ORIGIN: ${{ secrets.RECORDING_SUMMARY_ORIGIN }}
+      APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      WORKER_TOKEN: ${{ secrets.WORKER_TOKEN }}
+      DEPLOY_READY: ${{ secrets.TENCENT_CLOUD_HOST != '' && secrets.TENCENT_CLOUD_USER != '' && secrets.TENCENT_CLOUD_SSH_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+      - name: Skip deploy until Tencent Cloud secrets are configured
+        if: env.DEPLOY_READY != 'true'
+        run: |
+          echo "::warning::Skipping deploy because TENCENT_CLOUD_HOST, TENCENT_CLOUD_USER, or TENCENT_CLOUD_SSH_KEY is not configured."
+
+      - name: Prepare SSH
+        if: env.DEPLOY_READY == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/tencent_cloud_key
+          chmod 600 ~/.ssh/tencent_cloud_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Prepare server directories
+        if: env.DEPLOY_READY == 'true'
+        run: |
+          ssh -i ~/.ssh/tencent_cloud_key -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "sudo mkdir -p '$DEPLOY_DIR' '$DATA_DIR' && sudo chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$DEPLOY_DIR' '$DATA_DIR'"
+
+      - name: Write production env
+        if: env.DEPLOY_READY == 'true'
+        run: |
+          test -n "$APP_PASSWORD" || { echo "::error::Missing secret APP_PASSWORD"; exit 1; }
+          test -n "$SESSION_SECRET" || { echo "::error::Missing secret SESSION_SECRET"; exit 1; }
+          test -n "$DEEPSEEK_API_KEY" || { echo "::error::Missing secret DEEPSEEK_API_KEY"; exit 1; }
+          test -n "$WORKER_TOKEN" || { echo "::error::Missing secret WORKER_TOKEN"; exit 1; }
+
+          umask 077
+          cat > /tmp/recording-summary.env <<EOF
+          NODE_ENV=production
+          PORT=8787
+          DATA_DIR=$DATA_DIR
+          PUBLIC_BASE_URL=$PUBLIC_ORIGIN
+          CLIENT_ORIGIN=$PUBLIC_ORIGIN
+
+          APP_PASSWORD=$APP_PASSWORD
+          SESSION_SECRET=$SESSION_SECRET
+
+          LLM_PROVIDER=deepseek
+          DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY
+          DEEPSEEK_BASE_URL=https://api.deepseek.com
+          DEEPSEEK_MODEL=deepseek-v4-flash
+          DEEPSEEK_PRO_MODEL=deepseek-v4-pro
+
+          STT_MODE=remote-worker
+          WORKER_TOKEN=$WORKER_TOKEN
+          TTS_PROVIDER=browser
+          EOF
+
+          sed -i 's/^          //' /tmp/recording-summary.env
+          SSH_CMD="ssh -i ~/.ssh/tencent_cloud_key -p $DEPLOY_PORT -o BatchMode=yes -o StrictHostKeyChecking=yes"
+          rsync -az /tmp/recording-summary.env "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/.env" -e "$SSH_CMD"
+
+      - name: Deploy to Tencent Cloud
+        if: env.DEPLOY_READY == 'true'
+        run: |
+          SSH_CMD="ssh -i ~/.ssh/tencent_cloud_key -p $DEPLOY_PORT -o BatchMode=yes -o StrictHostKeyChecking=yes"
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude '.env' \
+            --exclude 'data/' \
+            --exclude 'node_modules/' \
+            --exclude 'dist/' \
+            --exclude '.venv-whisper/' \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/" -e "$SSH_CMD"
+
+          ssh -i ~/.ssh/tencent_cloud_key -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "APP_DIR='$DEPLOY_DIR' DATA_DIR='$DATA_DIR' SKIP_GIT_SYNC=1 bash '$DEPLOY_DIR/scripts/deploy.sh'"
+
+      - name: Smoke test
+        if: env.DEPLOY_READY == 'true'
+        run: |
+          ssh -i ~/.ssh/tencent_cloud_key -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" <<'EOF'
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18787/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "recording-summary did not become healthy" >&2
+          exit 1
+          EOF
+
+      - name: Install Caddy route
+        if: env.DEPLOY_READY == 'true' && env.PUBLIC_ORIGIN != ''
+        run: |
+          ssh -i ~/.ssh/tencent_cloud_key -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "RECORDING_SUMMARY_ORIGIN='$PUBLIC_ORIGIN' bash '$DEPLOY_DIR/scripts/install-caddy-route.sh'"
+
+      - name: Public smoke test
+        if: env.DEPLOY_READY == 'true' && env.PUBLIC_ORIGIN != ''
+        run: |
+          curl -fsS --max-time 20 "$PUBLIC_ORIGIN/api/health" >/dev/null

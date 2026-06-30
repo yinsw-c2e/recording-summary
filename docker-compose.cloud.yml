@@ -1,0 +1,31 @@
+name: recording-summary
+
+services:
+  app:
+    build:
+      context: .
+    image: recording-summary:cloud
+    container_name: recording_summary_app
+    env_file:
+      - .env
+    environment:
+      PORT: "8787"
+      DATA_DIR: /var/lib/recording-summary
+    ports:
+      - "127.0.0.1:18787:8787"
+    volumes:
+      - /var/lib/recording-summary:/var/lib/recording-summary
+    networks:
+      - default
+      - caddy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+networks:
+  caddy:
+    external: true
+    name: drone-v2-prod_default
