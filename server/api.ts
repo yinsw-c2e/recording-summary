@@ -69,6 +69,31 @@ function textMimeForFile(filePath: string): string {
   return "application/octet-stream";
 }
 
+type ByteRange = { start: number; end: number };
+
+function parseByteRange(value: string | undefined, size: number): ByteRange | null | "invalid" {
+  if (!value) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.split(",")[0]?.trim() ?? "");
+  if (!match || size < 1) return "invalid";
+
+  const [, startRaw, endRaw] = match;
+  if (!startRaw && !endRaw) return "invalid";
+
+  if (!startRaw) {
+    const suffixLength = Number(endRaw);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return "invalid";
+    return { start: Math.max(size - suffixLength, 0), end: size - 1 };
+  }
+
+  const start = Number(startRaw);
+  const end = endRaw ? Number(endRaw) : size - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) {
+    return "invalid";
+  }
+
+  return { start, end: Math.min(end, size - 1) };
+}
+
 export function buildServer(handle: DbHandle = openDb()) {
   const app = Fastify({ logger: true });
   const llm = createLLMProvider();
@@ -343,7 +368,27 @@ export function buildServer(handle: DbHandle = openDb()) {
     if (!asset) return reply.code(404).send({ error: "audio not found" });
     const filePath = absoluteDataPath(asset.path);
     if (!fs.existsSync(filePath)) return reply.code(404).send({ error: "audio file missing" });
-    reply.header("content-type", asset.mimeType || textMimeForFile(filePath));
+    const stat = fs.statSync(filePath);
+    const mimeType = asset.mimeType || textMimeForFile(filePath);
+    const range = parseByteRange(request.headers.range, stat.size);
+
+    reply.header("accept-ranges", "bytes");
+    reply.header("content-type", mimeType);
+    reply.header("cache-control", "private, max-age=0");
+
+    if (range === "invalid") {
+      return reply.code(416).header("content-range", `bytes */${stat.size}`).send();
+    }
+
+    if (range) {
+      const contentLength = range.end - range.start + 1;
+      reply.code(206);
+      reply.header("content-range", `bytes ${range.start}-${range.end}/${stat.size}`);
+      reply.header("content-length", String(contentLength));
+      return reply.send(fs.createReadStream(filePath, { start: range.start, end: range.end }));
+    }
+
+    reply.header("content-length", String(stat.size));
     return reply.send(fs.createReadStream(filePath));
   });
 
