@@ -42,11 +42,11 @@ $HOST {
 # recording-summary:end
 EOF
 
-install -m 0644 "$tmp" "$CADDYFILE"
+cat "$tmp" > "$CADDYFILE"
 rm -f "$tmp"
 
 if ! docker exec "$CADDY_CONTAINER" caddy validate --config /etc/caddy/Caddyfile; then
-  install -m 0644 "$backup" "$CADDYFILE"
+  cat "$backup" > "$CADDYFILE"
   rm -f "$backup"
   echo "Caddy validation failed; restored previous Caddyfile" >&2
   exit 1

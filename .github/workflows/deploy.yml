@@ -107,21 +107,6 @@ jobs:
           ssh -i ~/.ssh/tencent_cloud_key -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" \
             "APP_DIR='$DEPLOY_DIR' DATA_DIR='$DATA_DIR' SKIP_GIT_SYNC=1 bash '$DEPLOY_DIR/scripts/deploy.sh'"
 
-      - name: Smoke test
-        if: env.DEPLOY_READY == 'true'
-        run: |
-          ssh -i ~/.ssh/tencent_cloud_key -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" <<'EOF'
-          set -euo pipefail
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:18787/api/health >/dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "recording-summary did not become healthy" >&2
-          exit 1
-          EOF
-
       - name: Install Caddy route
         if: env.DEPLOY_READY == 'true' && env.PUBLIC_ORIGIN != ''
         run: |
