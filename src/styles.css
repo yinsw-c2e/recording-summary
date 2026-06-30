@@ -423,6 +423,16 @@ audio {
   margin: 0;
 }
 
+.audio-warning {
+  grid-column: 1 / -1;
+  color: #9f1239;
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
 .icon-button {
   width: 38px;
   height: 38px;

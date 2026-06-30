@@ -54,6 +54,20 @@ const typeLabels: Record<string, string> = {
   uncertain: "待确认"
 };
 
+const recordingMimeCandidates = [
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/aac",
+  "audio/webm;codecs=opus",
+  "audio/webm"
+];
+
+const processingStatuses = new Set(["transcription_queued", "transcribing", "transcript_pending", "transcribed", "organizing"]);
+
+function preferredRecordingMimeType(): string {
+  return recordingMimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+}
+
 function formatSeconds(value: number): string {
   const minutes = Math.floor(value / 60);
   const seconds = value % 60;
@@ -99,6 +113,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [speaking, setSpeaking] = useState(false);
+  const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -156,14 +171,18 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [recording]);
 
+  useEffect(() => {
+    if (!authenticated || !recordings.some((item) => processingStatuses.has(item.status))) return;
+    const timer = window.setInterval(() => {
+      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [authenticated, recordings]);
+
   async function startRecording() {
     setError("");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : MediaRecorder.isTypeSupported("audio/mp4")
-        ? "audio/mp4"
-        : "";
+    const mimeType = preferredRecordingMimeType();
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     streamRef.current = stream;
     recorderRef.current = recorder;
@@ -380,7 +399,15 @@ export function App() {
                   </small>
                   {item.error ? <em>{item.error}</em> : null}
                 </div>
-                <audio controls src={audioUrl(item.audioAssetId)} />
+                <audio
+                  controls
+                  src={audioUrl(item.audioAssetId)}
+                  onCanPlay={() => setAudioErrors((current) => ({ ...current, [item.id]: false }))}
+                  onError={() => setAudioErrors((current) => ({ ...current, [item.id]: true }))}
+                />
+                {audioErrors[item.id] ? (
+                  <div className="audio-warning">当前浏览器不能播放这段原始录音格式；转写和总结不受影响。</div>
+                ) : null}
                 <button
                   className="icon-button danger"
                   type="button"

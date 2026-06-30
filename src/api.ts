@@ -92,7 +92,7 @@ export function logout(): Promise<{ ok: boolean }> {
 
 export async function uploadRecording(blob: Blob, duration: number, transcript: string): Promise<{ recording: { id: string; status: string } }> {
   const form = new FormData();
-  const ext = blob.type.includes("mp4") ? "m4a" : "webm";
+  const ext = blob.type.includes("mp4") || blob.type.includes("aac") ? "m4a" : "webm";
   form.append("audio", blob, `recording.${ext}`);
   form.append("duration", String(Math.round(duration)));
   if (transcript.trim()) form.append("transcript", transcript.trim());

@@ -63,6 +63,7 @@ function textMimeForFile(filePath: string): string {
   if (filePath.endsWith(".mp3")) return "audio/mpeg";
   if (filePath.endsWith(".aiff")) return "audio/aiff";
   if (filePath.endsWith(".webm")) return "audio/webm";
+  if (filePath.endsWith(".aac")) return "audio/aac";
   if (filePath.endsWith(".m4a")) return "audio/mp4";
   if (filePath.endsWith(".wav")) return "audio/wav";
   return "application/octet-stream";
