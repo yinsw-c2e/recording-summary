@@ -3,6 +3,8 @@ import {
   AlertCircle,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Trash2,
   FileAudio,
@@ -90,6 +92,12 @@ function shiftMonth(month: string, delta: number): string {
   const [year, value] = month.split("-").map(Number);
   const date = new Date(year, value - 1 + delta, 1);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftDayKey(key: string, delta: number): string {
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(year, month - 1, day + delta);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function daysForMonth(month: string): Array<{ key: string; day: number; offset: number }> {
@@ -197,6 +205,12 @@ export function App() {
     if (!month) return;
     const next = await getMonthOverview(month);
     setMonthOverview(next.days);
+  }
+
+  function selectDay(day: string) {
+    setSelectedDayKey(day);
+    setVisibleMonth(monthFromDay(day));
+    setSelectedPeriod("day");
   }
 
   useEffect(() => {
@@ -493,6 +507,17 @@ export function App() {
           <CalendarDays size={18} />
           <h2>日期看板</h2>
         </div>
+        <div className="day-switcher" aria-label="日期切换">
+          <button type="button" aria-label="上一天" onClick={() => selectDay(shiftDayKey(selectedDayKey || todayDayKey, -1))}>
+            <ChevronLeft size={17} />
+            <span>上一天</span>
+          </button>
+          <strong>{selectedDayKey || todayDayKey}</strong>
+          <button type="button" aria-label="下一天" onClick={() => selectDay(shiftDayKey(selectedDayKey || todayDayKey, 1))}>
+            <span>下一天</span>
+            <ChevronRight size={17} />
+          </button>
+        </div>
         <div className="month-toolbar">
           <button type="button" onClick={() => setVisibleMonth((month) => shiftMonth(month || monthFromDay(todayDayKey), -1))}>
             上月
@@ -530,10 +555,7 @@ export function App() {
                 aria-pressed={isSelected}
                 className={`calendar-day ${hasContent ? "has-content" : ""} ${isSelected ? "active" : ""} ${isToday ? "today" : ""}`}
                 style={day.offset ? { gridColumnStart: day.offset + 1 } : undefined}
-                onClick={() => {
-                  setSelectedDayKey(day.key);
-                  setSelectedPeriod("day");
-                }}
+                onClick={() => selectDay(day.key)}
               >
                 <span>{day.day}</span>
                 <small>{detail}</small>
