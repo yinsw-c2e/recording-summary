@@ -23,6 +23,8 @@ import {
   deleteRecording,
   finishLatest,
   getAuthStatus,
+  getDayDashboard,
+  getMonthOverview,
   getSummaryMarkdown,
   getToday,
   login,
@@ -31,6 +33,7 @@ import {
   regenerateSummary,
   uploadRecording,
   type Period,
+  type MonthDayOverview,
   type RecordingListItem,
   type SummaryArtifact,
   type ThoughtCard,
@@ -66,6 +69,39 @@ const processingStatuses = new Set(["transcription_queued", "transcribing", "tra
 
 function preferredRecordingMimeType(): string {
   return recordingMimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+}
+
+function todayKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function monthFromDay(key: string): string {
+  return key.slice(0, 7);
+}
+
+function monthLabel(month: string): string {
+  const [year, value] = month.split("-");
+  return `${year}年${Number(value)}月`;
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const [year, value] = month.split("-").map(Number);
+  const date = new Date(year, value - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function daysForMonth(month: string): Array<{ key: string; day: number; offset: number }> {
+  const [year, value] = month.split("-").map(Number);
+  if (!year || !value) return [];
+  const days = new Date(year, value, 0).getDate();
+  const first = new Date(year, value - 1, 1);
+  const offset = (first.getDay() + 6) % 7;
+  return Array.from({ length: days }, (_, index) => ({
+    key: `${month}-${String(index + 1).padStart(2, "0")}`,
+    day: index + 1,
+    offset: index === 0 ? offset : 0
+  }));
 }
 
 function formatSeconds(value: number): string {
@@ -114,29 +150,51 @@ export function App() {
   const [password, setPassword] = useState("");
   const [speaking, setSpeaking] = useState(false);
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
+  const [selectedDayKey, setSelectedDayKey] = useState("");
+  const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
+  const [visibleMonth, setVisibleMonth] = useState("");
+  const [monthOverview, setMonthOverview] = useState<MonthDayOverview[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const startedAtRef = useRef(0);
 
-  const selectedSummary: SummaryArtifact | null = today?.summaries[selectedPeriod] ?? null;
-  const selectedKey = today?.keys[selectedPeriod] ?? "";
-  const cards = today?.stats.cards ?? [];
-  const recordings = today?.recordings ?? [];
+  const activeData = selectedDayData ?? today;
+  const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
+  const selectedKey = activeData?.keys[selectedPeriod] ?? "";
+  const cards = activeData?.stats.cards ?? [];
+  const recordings = activeData?.recordings ?? [];
   const worker = today?.worker;
+  const todayDayKey = today?.keys.day ?? todayKey();
+  const overviewByDay = useMemo(() => new Map(monthOverview.map((item) => [item.dayKey, item])), [monthOverview]);
+  const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
 
-  async function refresh() {
+  async function refresh(): Promise<TodayResponse | null> {
     try {
       const next = await getToday();
       setToday(next);
       setAuthenticated(true);
+      return next;
     } catch (err) {
       if (err instanceof Error && err.message.includes("authentication required")) {
         setAuthenticated(false);
-        return;
+        return null;
       }
       throw err;
     }
+  }
+
+  async function refreshSelectedDay(day = selectedDayKey): Promise<TodayResponse | null> {
+    if (!day) return null;
+    const next = await getDayDashboard(day);
+    setSelectedDayData(next);
+    return next;
+  }
+
+  async function refreshVisibleMonth(month = visibleMonth): Promise<void> {
+    if (!month) return;
+    const next = await getMonthOverview(month);
+    setMonthOverview(next.days);
   }
 
   useEffect(() => {
@@ -145,13 +203,30 @@ export function App() {
         setAuthRequired(status.authRequired);
         setAuthenticated(status.authenticated);
         setAuthChecked(true);
-        if (status.authenticated) await refresh();
+        if (status.authenticated) {
+          const next = await refresh();
+          if (next) {
+            setSelectedDayKey(next.keys.day);
+            setSelectedDayData(next);
+            setVisibleMonth(next.keys.month);
+          }
+        }
       })
       .catch((err) => {
         setAuthChecked(true);
         setError(err.message);
       });
   }, []);
+
+  useEffect(() => {
+    if (!authenticated || !selectedDayKey) return;
+    refreshSelectedDay(selectedDayKey).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [authenticated, selectedDayKey]);
+
+  useEffect(() => {
+    if (!authenticated || !visibleMonth) return;
+    refreshVisibleMonth(visibleMonth).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [authenticated, visibleMonth]);
 
   useEffect(() => {
     if (!selectedSummary) {
@@ -174,10 +249,12 @@ export function App() {
   useEffect(() => {
     if (!authenticated || !recordings.some((item) => processingStatuses.has(item.status))) return;
     const timer = window.setInterval(() => {
-      refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      Promise.all([refresh(), refreshSelectedDay(), refreshVisibleMonth()]).catch((err) =>
+        setError(err instanceof Error ? err.message : String(err))
+      );
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [authenticated, recordings]);
+  }, [authenticated, recordings, selectedDayKey, visibleMonth]);
 
   async function startRecording() {
     setError("");
@@ -199,15 +276,21 @@ export function App() {
       try {
         const result = await uploadRecording(blob, Math.floor((Date.now() - startedAtRef.current) / 1000), manualTranscript);
         setLastRecordingId(result.recording.id);
+        const next = await refresh();
+        if (next) {
+          setSelectedDayKey(next.keys.day);
+          setSelectedDayData(next);
+          setVisibleMonth(next.keys.month);
+          await refreshVisibleMonth(next.keys.month);
+        }
         if (["transcription_queued", "transcribing", "transcript_pending"].includes(result.recording.status)) {
-          await refresh();
           return;
         }
         await finishLatest();
         if (manualTranscript.trim()) {
           setManualTranscript("");
         }
-        await refresh();
+        await refreshSelectedDay(next?.keys.day);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -229,6 +312,8 @@ export function App() {
     try {
       await action();
       await refresh();
+      await refreshSelectedDay();
+      await refreshVisibleMonth();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -250,7 +335,12 @@ export function App() {
       await login(password);
       setPassword("");
       setAuthenticated(true);
-      await refresh();
+      const next = await refresh();
+      if (next) {
+        setSelectedDayKey(next.keys.day);
+        setSelectedDayData(next);
+        setVisibleMonth(next.keys.month);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -264,6 +354,10 @@ export function App() {
     setSpeaking(false);
     setAuthenticated(false);
     setToday(null);
+    setSelectedDayData(null);
+    setSelectedDayKey("");
+    setVisibleMonth("");
+    setMonthOverview([]);
   }
 
   function speakSummary() {
@@ -383,10 +477,65 @@ export function App() {
         <small>{today?.sttMode === "remote-worker" ? "手机上传后由 Mac Whisper large-v3 转写" : "本机转写模式"}</small>
       </section>
 
+      <section className="day-board">
+        <div className="section-title">
+          <CalendarDays size={18} />
+          <h2>日期看板</h2>
+        </div>
+        <div className="month-toolbar">
+          <button type="button" onClick={() => setVisibleMonth((month) => shiftMonth(month || monthFromDay(todayDayKey), -1))}>
+            上月
+          </button>
+          <strong>{monthLabel(visibleMonth || monthFromDay(todayDayKey))}</strong>
+          <button type="button" onClick={() => setVisibleMonth((month) => shiftMonth(month || monthFromDay(todayDayKey), 1))}>
+            下月
+          </button>
+        </div>
+        <div className="calendar-grid calendar-weekdays">
+          {["一", "二", "三", "四", "五", "六", "日"].map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+        <div className="calendar-grid">
+          {calendarDays.map((day) => {
+            const overview = overviewByDay.get(day.key);
+            const isSelected = selectedDayKey === day.key;
+            const isToday = todayDayKey === day.key;
+            const hasContent = Boolean(overview?.recordings || overview?.cards || overview?.hasSummary);
+            const detail = [
+              overview?.recordings ? `${overview.recordings}录` : "",
+              overview?.pending ? `${overview.pending}待` : "",
+              overview?.cards ? `${overview.cards}卡` : "",
+              overview?.summaryVersion ? `v${overview.summaryVersion}` : ""
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <button
+                type="button"
+                key={day.key}
+                data-day-key={day.key}
+                aria-label={`${day.key}${detail ? ` ${detail}` : ""}`}
+                aria-pressed={isSelected}
+                className={`calendar-day ${hasContent ? "has-content" : ""} ${isSelected ? "active" : ""} ${isToday ? "today" : ""}`}
+                style={day.offset ? { gridColumnStart: day.offset + 1 } : undefined}
+                onClick={() => {
+                  setSelectedDayKey(day.key);
+                  setSelectedPeriod("day");
+                }}
+              >
+                <span>{day.day}</span>
+                <small>{detail}</small>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="recordings-panel">
         <div className="section-title">
           <FileAudio size={18} />
-          <h2>今日录音</h2>
+          <h2>{selectedDayKey === todayDayKey ? "今日录音" : `${selectedDayKey} 录音`}</h2>
         </div>
         <div className="recording-list">
           {recordings.length ? (
@@ -511,7 +660,7 @@ export function App() {
       <section className="cards-panel">
         <div className="section-title">
           <Sparkles size={18} />
-          <h2>今日卡片</h2>
+          <h2>{selectedDayKey === todayDayKey ? "今日卡片" : `${selectedDayKey} 卡片`}</h2>
         </div>
         <div className="card-list">
           {cards.length ? cards.map((card) => <ThoughtCardItem key={card.id} card={card} />) : <div className="empty-card">暂无卡片</div>}

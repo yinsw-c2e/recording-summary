@@ -22,6 +22,7 @@ import {
   getTranscriptionJob,
   getTodayStats,
   getWorkerSnapshot,
+  listMonthOverview,
   listRecordingsForDay,
   listSummaries,
   markTranscriptionJobTranscribing,
@@ -67,6 +68,16 @@ function textMimeForFile(filePath: string): string {
   if (filePath.endsWith(".m4a")) return "audio/mp4";
   if (filePath.endsWith(".wav")) return "audio/wav";
   return "application/octet-stream";
+}
+
+function dateFromDayKey(key: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const date = new Date(`${key}T04:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || dayKey(date) !== key ? null : date;
+}
+
+function isMonthKey(key: string): boolean {
+  return /^\d{4}-\d{2}$/.test(key);
 }
 
 type ByteRange = { start: number; end: number };
@@ -333,6 +344,31 @@ export function buildServer(handle: DbHandle = openDb()) {
       month: getLatestSummary(handle, "month", keys.month)
     };
     return { keys, stats, recordings, summaries, provider: llm.name, sttMode: config.sttMode, worker: getWorkerSnapshot(handle) };
+  });
+
+  app.get("/api/day", async (request, reply) => {
+    const key = String((request.query as { key?: string }).key ?? dayKey(new Date()));
+    const date = dateFromDayKey(key);
+    if (!date) return reply.code(400).send({ error: "key must be YYYY-MM-DD" });
+    const keys = {
+      day: key,
+      week: weekKey(date),
+      month: monthKey(date)
+    };
+    const stats = getTodayStats(handle, keys.day);
+    const recordings = listRecordingsForDay(handle, keys.day);
+    const summaries = {
+      day: getLatestSummary(handle, "day", keys.day),
+      week: getLatestSummary(handle, "week", keys.week),
+      month: getLatestSummary(handle, "month", keys.month)
+    };
+    return { keys, stats, recordings, summaries, provider: llm.name, sttMode: config.sttMode, worker: getWorkerSnapshot(handle) };
+  });
+
+  app.get("/api/month", async (request, reply) => {
+    const month = String((request.query as { month?: string }).month ?? monthKey(new Date()));
+    if (!isMonthKey(month)) return reply.code(400).send({ error: "month must be YYYY-MM" });
+    return { month, days: listMonthOverview(handle, month) };
   });
 
   app.post("/api/process/organize-new", async () => organizeNew(handle, llm));

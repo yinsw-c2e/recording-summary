@@ -61,6 +61,22 @@ export interface TodayResponse {
   worker: WorkerSnapshot;
 }
 
+export type DayDashboardResponse = TodayResponse;
+
+export interface MonthDayOverview {
+  dayKey: string;
+  recordings: number;
+  pending: number;
+  cards: number;
+  hasSummary: boolean;
+  summaryVersion: number | null;
+}
+
+export interface MonthOverviewResponse {
+  month: string;
+  days: MonthDayOverview[];
+}
+
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
@@ -72,6 +88,14 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function getToday(): Promise<TodayResponse> {
   return json<TodayResponse>("/api/today");
+}
+
+export function getDayDashboard(key: string): Promise<DayDashboardResponse> {
+  return json<DayDashboardResponse>(`/api/day?key=${encodeURIComponent(key)}`);
+}
+
+export function getMonthOverview(month: string): Promise<MonthOverviewResponse> {
+  return json<MonthOverviewResponse>(`/api/month?month=${encodeURIComponent(month)}`);
 }
 
 export function getAuthStatus(): Promise<{ authRequired: boolean; authenticated: boolean }> {

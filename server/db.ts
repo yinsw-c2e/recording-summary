@@ -836,6 +836,80 @@ export function getTodayStats(handle: DbHandle, day: string): {
   return { recordings, pending, organized: cards.length, cards };
 }
 
+export function listMonthOverview(
+  handle: DbHandle,
+  month: string
+): Array<{ dayKey: string; recordings: number; pending: number; cards: number; hasSummary: boolean; summaryVersion: number | null }> {
+  const rows = handle.db
+    .prepare(
+      `SELECT r.day_key AS dayKey,
+              count(DISTINCT r.id) AS recordings,
+              count(DISTINCT CASE
+                WHEN r.status IN ('uploaded', 'transcription_queued', 'transcribing', 'transcript_pending', 'organizing')
+                  OR (r.status = 'transcribed' AND c.id IS NULL)
+                THEN r.id
+              END) AS pending
+       FROM recordings r
+       LEFT JOIN thought_cards c ON c.source_recording_id = r.id AND c.version = 1
+       WHERE r.month_key = ?
+       GROUP BY r.day_key`
+    )
+    .all(month) as Array<Record<string, unknown>>;
+
+  const byDay = new Map<
+    string,
+    { dayKey: string; recordings: number; pending: number; cards: number; hasSummary: boolean; summaryVersion: number | null }
+  >();
+
+  for (const row of rows) {
+    const day = String(row.dayKey);
+    byDay.set(day, {
+      dayKey: day,
+      recordings: Number(row.recordings),
+      pending: Number(row.pending ?? 0),
+      cards: 0,
+      hasSummary: false,
+      summaryVersion: null
+    });
+  }
+
+  const cardRows = handle.db
+    .prepare(
+      `SELECT r.day_key AS dayKey, count(c.id) AS cards
+       FROM recordings r
+       JOIN thought_cards c ON c.source_recording_id = r.id AND c.version = 1
+       WHERE r.month_key = ?
+       GROUP BY r.day_key`
+    )
+    .all(month) as Array<Record<string, unknown>>;
+
+  for (const row of cardRows) {
+    const day = String(row.dayKey);
+    const current = byDay.get(day) ?? { dayKey: day, recordings: 0, pending: 0, cards: 0, hasSummary: false, summaryVersion: null };
+    current.cards = Number(row.cards);
+    byDay.set(day, current);
+  }
+
+  const summaryRows = handle.db
+    .prepare(
+      `SELECT period_key AS dayKey, max(version) AS version
+       FROM summary_artifacts
+       WHERE period = 'day' AND substr(period_key, 1, 7) = ?
+       GROUP BY period_key`
+    )
+    .all(month) as Array<Record<string, unknown>>;
+
+  for (const row of summaryRows) {
+    const day = String(row.dayKey);
+    const current = byDay.get(day) ?? { dayKey: day, recordings: 0, pending: 0, cards: 0, hasSummary: false, summaryVersion: null };
+    current.hasSummary = true;
+    current.summaryVersion = row.version === null ? null : Number(row.version);
+    byDay.set(day, current);
+  }
+
+  return Array.from(byDay.values()).sort((a, b) => a.dayKey.localeCompare(b.dayKey));
+}
+
 export function getLatestSummary(handle: DbHandle, period: Period, key: string): SummaryArtifact | null {
   const row = handle.db
     .prepare(

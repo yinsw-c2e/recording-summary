@@ -222,6 +222,7 @@ button:disabled {
 .actions-panel,
 .transcript-panel,
 .recordings-panel,
+.day-board,
 .cards-panel {
   margin-top: 14px;
 }
@@ -295,6 +296,92 @@ button:disabled {
   color: #667085;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.day-board {
+  display: grid;
+  gap: 10px;
+}
+
+.month-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.month-toolbar strong {
+  color: #1f2937;
+  font-size: 15px;
+  text-align: center;
+}
+
+.month-toolbar button {
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid #d7dde6;
+  background: #ffffff;
+  color: #344054;
+  font-weight: 700;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-weekdays span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.calendar-day {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  text-align: center;
+}
+
+.calendar-day span {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.calendar-day small {
+  min-height: 14px;
+  color: #667085;
+  font-size: 9px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.calendar-day.has-content {
+  border-color: #cbd5e1;
+  background: #fbfcfe;
+}
+
+.calendar-day.today {
+  border-color: #94a3b8;
+}
+
+.calendar-day.active {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
+}
+
+.calendar-day.active small {
+  color: #d7dde6;
 }
 
 .summary-meta {

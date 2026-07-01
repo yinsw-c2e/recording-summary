@@ -378,6 +378,96 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("builds month overview for the calendar board", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const { openDb, createAudioAsset, createRecording, insertCard, insertSummary, listMonthOverview, updateRecordingStatus } = await import(
+      "../server/db"
+    );
+
+    const handle = openDb();
+
+    const asset1 = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "calendar-r1",
+      path: "raw_audio/calendar-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "calendar-r1",
+      audioPath: "raw_audio/calendar-r1.webm",
+      audioAssetId: asset1.id,
+      duration: 12,
+      mimeType: "audio/webm"
+    });
+    handle.db
+      .prepare("UPDATE recordings SET created_at = ?, day_key = ?, week_key = ?, month_key = ?, status = ? WHERE id = ?")
+      .run("2026-07-01T02:00:00.000Z", "2026-07-01", "2026-W27", "2026-07", "organized", "calendar-r1");
+    insertCard(handle, {
+      type: "raw_idea",
+      title: "月历看板",
+      summary: "点击日期后查看当天内容",
+      keyPoints: ["点击日期后查看当天内容"],
+      actions: [],
+      tags: ["日期看板"],
+      sourceRecordingId: "calendar-r1",
+      sourceTextRange: "segment-1",
+      confidence: 0.9,
+      version: 1,
+      rawJson: {}
+    });
+    insertSummary(handle, {
+      id: "summary-calendar-1",
+      period: "day",
+      periodKey: "2026-07-01",
+      markdownPath: "summaries/day/2026-07-01-v2.md",
+      listeningScript: "7月1日总结",
+      audioAssetId: null,
+      version: 2
+    });
+
+    const asset2 = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "calendar-r2",
+      path: "raw_audio/calendar-r2.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "calendar-r2",
+      audioPath: "raw_audio/calendar-r2.webm",
+      audioAssetId: asset2.id,
+      duration: 8,
+      mimeType: "audio/webm"
+    });
+    handle.db
+      .prepare("UPDATE recordings SET created_at = ?, day_key = ?, week_key = ?, month_key = ? WHERE id = ?")
+      .run("2026-07-02T02:00:00.000Z", "2026-07-02", "2026-W27", "2026-07", "calendar-r2");
+    updateRecordingStatus(handle, "calendar-r2", "transcribed");
+
+    expect(listMonthOverview(handle, "2026-07")).toEqual([
+      {
+        dayKey: "2026-07-01",
+        recordings: 1,
+        pending: 0,
+        cards: 1,
+        hasSummary: true,
+        summaryVersion: 2
+      },
+      {
+        dayKey: "2026-07-02",
+        recordings: 1,
+        pending: 1,
+        cards: 0,
+        hasSummary: false,
+        summaryVersion: null
+      }
+    ]);
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("claims a remote transcription job once and completes it into cards", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });
