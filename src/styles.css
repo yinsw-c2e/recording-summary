@@ -103,7 +103,7 @@ button:disabled {
 }
 
 .login-card button,
-.speech-actions button {
+.speech-main {
   min-height: 42px;
   display: flex;
   align-items: center;
@@ -407,12 +407,37 @@ audio {
 }
 
 .speech-actions {
+  display: grid;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
-.speech-actions button {
+.speech-main {
   width: 100%;
   background: #263244;
+}
+
+.speech-rate {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.speech-rate button {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.speech-rate button.active {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
 }
 
 .summary-markdown {

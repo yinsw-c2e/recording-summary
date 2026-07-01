@@ -66,6 +66,7 @@ const recordingMimeCandidates = [
 ];
 
 const processingStatuses = new Set(["transcription_queued", "transcribing", "transcript_pending", "transcribed", "organizing"]);
+const speechRates = [1, 1.25, 1.5, 1.75, 2];
 
 function preferredRecordingMimeType(): string {
   return recordingMimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
@@ -149,6 +150,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [speaking, setSpeaking] = useState(false);
+  const [speechRate, setSpeechRate] = useState(1.5);
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
   const [selectedDayKey, setSelectedDayKey] = useState("");
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
@@ -360,15 +362,24 @@ export function App() {
     setMonthOverview([]);
   }
 
-  function speakSummary() {
+  function speakSummary(rate = speechRate) {
     if (!selectedSummary?.listeningScript || !("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(selectedSummary.listeningScript);
     utterance.lang = "zh-CN";
+    utterance.rate = rate;
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     setSpeaking(true);
     window.speechSynthesis.speak(utterance);
+  }
+
+  function changeSpeechRate(rate: number) {
+    setSpeechRate(rate);
+    if (speaking) {
+      window.speechSynthesis?.cancel();
+      window.setTimeout(() => speakSummary(rate), 0);
+    }
   }
 
   function stopSpeaking() {
@@ -606,9 +617,26 @@ export function App() {
             </div>
           )}
           <div className="speech-actions">
-            <button disabled={!selectedSummary?.listeningScript || !("speechSynthesis" in window)} onClick={speaking ? stopSpeaking : speakSummary}>
+            <div className="speech-rate" aria-label="朗读倍速">
+              {speechRates.map((rate) => (
+                <button
+                  type="button"
+                  key={rate}
+                  className={speechRate === rate ? "active" : ""}
+                  aria-pressed={speechRate === rate}
+                  onClick={() => changeSpeechRate(rate)}
+                >
+                  {rate}x
+                </button>
+              ))}
+            </div>
+            <button
+              className="speech-main"
+              disabled={!selectedSummary?.listeningScript || !("speechSynthesis" in window)}
+              onClick={speaking ? stopSpeaking : () => speakSummary()}
+            >
               <Volume2 size={16} />
-              {speaking ? "停止朗读" : "朗读总结"}
+              {speaking ? "停止朗读" : `朗读总结 ${speechRate}x`}
             </button>
           </div>
           <pre className="summary-markdown">{summaryMarkdown || "暂无总结内容"}</pre>
