@@ -119,6 +119,7 @@ type SpeechSource = "summary" | "focus" | "review_due";
 type CopySource = "focus" | "summary" | "day-archive" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type WakeLockState = "idle" | "active" | "released" | "unsupported" | "failed";
+type MonthContentFilter = "all" | "pending" | "review_due" | "summary";
 type CardDraft = {
   type: string;
   title: string;
@@ -139,6 +140,12 @@ type NavigatorWithWakeLock = Navigator & {
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const completedActionsStorageKey = "recording-summary.completed-actions.v1";
+const monthContentFilterLabels: Record<MonthContentFilter, string> = {
+  all: "全部",
+  pending: "待处理",
+  review_due: "待复习",
+  summary: "有总结"
+};
 const recordingMimeCandidates = [
   "audio/mp4;codecs=mp4a.40.2",
   "audio/mp4",
@@ -203,6 +210,13 @@ function monthOverviewDetail(overview?: MonthDayOverview): string {
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function matchesMonthContentFilter(overview: MonthDayOverview, filter: MonthContentFilter): boolean {
+  if (filter === "pending") return overview.pending > 0;
+  if (filter === "review_due") return overview.reviewDue > 0;
+  if (filter === "summary") return overview.hasSummary;
+  return true;
 }
 
 function readRawUrlDayParam(): string {
@@ -434,6 +448,7 @@ export function App() {
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
   const [visibleMonth, setVisibleMonth] = useState("");
   const [monthOverview, setMonthOverview] = useState<MonthDayOverview[]>([]);
+  const [monthContentFilter, setMonthContentFilter] = useState<MonthContentFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CardSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -494,6 +509,20 @@ export function App() {
   const visibleMonthContentDays = useMemo(
     () => monthOverview.filter((item) => item.recordings || item.pending || item.cards || item.reviewDue || item.hasSummary),
     [monthOverview]
+  );
+  const monthContentFilterCounts = useMemo(
+    () =>
+      ({
+        all: visibleMonthContentDays.length,
+        pending: visibleMonthContentDays.filter((item) => item.pending > 0).length,
+        review_due: visibleMonthContentDays.filter((item) => item.reviewDue > 0).length,
+        summary: visibleMonthContentDays.filter((item) => item.hasSummary).length
+      }) satisfies Record<MonthContentFilter, number>,
+    [visibleMonthContentDays]
+  );
+  const filteredMonthContentDays = useMemo(
+    () => visibleMonthContentDays.filter((item) => matchesMonthContentFilter(item, monthContentFilter)),
+    [monthContentFilter, visibleMonthContentDays]
   );
   const actionItems = useMemo<FocusActionItem[]>(
     () =>
@@ -765,6 +794,10 @@ export function App() {
     if (!authenticated || !visibleMonth) return;
     refreshVisibleMonth(visibleMonth).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [authenticated, visibleMonth]);
+
+  useEffect(() => {
+    setMonthContentFilter("all");
+  }, [visibleMonth]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -1560,25 +1593,45 @@ export function App() {
         </div>
         {visibleMonthContentDays.length ? (
           <div className="month-content-strip" aria-label="本月有内容日期">
-            <span>本月有内容</span>
-            <div>
-              {visibleMonthContentDays.map((overview) => {
-                const isSelected = activeDay === overview.dayKey;
-                const detail = monthOverviewDetail(overview);
-                return (
+            <div className="month-content-head">
+              <span>本月有内容</span>
+              <div className="month-content-filter" aria-label="本月内容筛选">
+                {(Object.keys(monthContentFilterLabels) as MonthContentFilter[]).map((filter) => (
                   <button
                     type="button"
-                    key={overview.dayKey}
-                    className={isSelected ? "active" : ""}
-                    aria-pressed={isSelected}
-                    aria-label={`${overview.dayKey}${detail ? ` ${detail}` : ""}`}
-                    onClick={() => selectDay(overview.dayKey, { scrollToContent: true })}
+                    key={filter}
+                    className={monthContentFilter === filter ? "active" : ""}
+                    aria-pressed={monthContentFilter === filter}
+                    disabled={filter !== "all" && monthContentFilterCounts[filter] === 0}
+                    onClick={() => setMonthContentFilter(filter)}
                   >
-                    <strong>{Number(overview.dayKey.slice(-2))}日</strong>
-                    <small>{detail || "有内容"}</small>
+                    {monthContentFilterLabels[filter]} {monthContentFilterCounts[filter]}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+            <div className="month-content-days">
+              {filteredMonthContentDays.length ? (
+                filteredMonthContentDays.map((overview) => {
+                  const isSelected = activeDay === overview.dayKey;
+                  const detail = monthOverviewDetail(overview);
+                  return (
+                    <button
+                      type="button"
+                      key={overview.dayKey}
+                      className={isSelected ? "active" : ""}
+                      aria-pressed={isSelected}
+                      aria-label={`${overview.dayKey}${detail ? ` ${detail}` : ""}`}
+                      onClick={() => selectDay(overview.dayKey, { scrollToContent: true })}
+                    >
+                      <strong>{Number(overview.dayKey.slice(-2))}日</strong>
+                      <small>{detail || "有内容"}</small>
+                    </button>
+                  );
+                })
+              ) : (
+                <span className="month-content-empty">本月暂无{monthContentFilterLabels[monthContentFilter]}日期</span>
+              )}
             </div>
           </div>
         ) : null}

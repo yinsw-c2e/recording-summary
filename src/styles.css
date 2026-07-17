@@ -918,16 +918,22 @@ button:disabled {
 
 .month-content-strip {
   display: grid;
+  gap: 8px;
+}
+
+.month-content-head {
+  display: grid;
   gap: 6px;
 }
 
-.month-content-strip > span {
+.month-content-head > span {
   color: #667085;
   font-size: 12px;
   font-weight: 800;
 }
 
-.month-content-strip > div {
+.month-content-filter,
+.month-content-days {
   display: flex;
   gap: 6px;
   overflow-x: auto;
@@ -935,11 +941,34 @@ button:disabled {
   scrollbar-width: none;
 }
 
-.month-content-strip > div::-webkit-scrollbar {
+.month-content-filter::-webkit-scrollbar,
+.month-content-days::-webkit-scrollbar {
   display: none;
 }
 
-.month-content-strip button {
+.month-content-filter button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.month-content-filter button.active {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
+}
+
+.month-content-filter button:disabled {
+  opacity: 0.45;
+}
+
+.month-content-days button {
   flex: 0 0 auto;
   min-width: 72px;
   min-height: 44px;
@@ -954,26 +983,33 @@ button:disabled {
   text-align: left;
 }
 
-.month-content-strip button.active {
+.month-content-days button.active {
   border-color: #111827;
   background: #111827;
   color: #ffffff;
 }
 
-.month-content-strip strong {
+.month-content-days strong {
   font-size: 13px;
   line-height: 1.1;
 }
 
-.month-content-strip small {
+.month-content-days small {
   color: #667085;
   font-size: 10px;
   line-height: 1.2;
   white-space: nowrap;
 }
 
-.month-content-strip button.active small {
+.month-content-days button.active small {
   color: #d7dde6;
+}
+
+.month-content-empty {
+  flex: 0 0 auto;
+  padding: 8px 0;
+  color: #667085;
+  font-size: 12px;
 }
 
 .calendar-grid {
