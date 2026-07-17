@@ -3,6 +3,15 @@ import type { MonthDayOverview } from "./api";
 export type MonthContentFilter = "all" | "pending" | "review_due" | "summary";
 export type ContentDayDirection = "previous" | "next";
 
+export interface MonthAttentionSummary {
+  pendingDays: number;
+  pendingTotal: number;
+  firstPendingDay: MonthDayOverview | null;
+  reviewDueDays: number;
+  reviewDueTotal: number;
+  firstReviewDueDay: MonthDayOverview | null;
+}
+
 export const monthContentFilterLabels: Record<MonthContentFilter, string> = {
   all: "全部",
   pending: "待处理",
@@ -49,4 +58,19 @@ export function findAdjacentContentDay(
     return [...ordered].reverse().find((item) => item.dayKey < activeDay);
   }
   return ordered.find((item) => item.dayKey > activeDay && (!maxDay || item.dayKey <= maxDay));
+}
+
+export function summarizeMonthAttention(days: MonthDayOverview[], maxDay?: string): MonthAttentionSummary {
+  const eligible = orderedMonthContentDays(days).filter((item) => !maxDay || item.dayKey <= maxDay);
+  const pending = eligible.filter((item) => item.pending > 0);
+  const reviewDue = eligible.filter((item) => item.reviewDue > 0);
+
+  return {
+    pendingDays: pending.length,
+    pendingTotal: pending.reduce((total, item) => total + item.pending, 0),
+    firstPendingDay: pending[0] ?? null,
+    reviewDueDays: reviewDue.length,
+    reviewDueTotal: reviewDue.reduce((total, item) => total + item.reviewDue, 0),
+    firstReviewDueDay: reviewDue[0] ?? null
+  };
 }

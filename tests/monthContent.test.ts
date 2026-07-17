@@ -5,6 +5,7 @@ import {
   monthOverviewDetail,
   monthOverviewHasContent,
   orderedMonthContentDays,
+  summarizeMonthAttention,
   type MonthContentFilter
 } from "../src/monthContent";
 import type { MonthDayOverview } from "../src/api";
@@ -68,5 +69,23 @@ describe("month content helpers", () => {
     expect(monthOverviewDetail(overview("2026-07-09", { recordings: 2, pending: 1, cards: 3, reviewDue: 1, summaryVersion: 4 }))).toBe(
       "2录 1待 3卡 1待复 v4"
     );
+  });
+
+  it("summarizes overdue month attention and ignores future days", () => {
+    const summary = summarizeMonthAttention(
+      [
+        overview("2026-07-12", { pending: 2, reviewDue: 1 }),
+        overview("2026-07-03", { reviewDue: 3 }),
+        overview("2026-07-18", { pending: 9, reviewDue: 9 })
+      ],
+      "2026-07-12"
+    );
+
+    expect(summary.pendingDays).toBe(1);
+    expect(summary.pendingTotal).toBe(2);
+    expect(summary.firstPendingDay?.dayKey).toBe("2026-07-12");
+    expect(summary.reviewDueDays).toBe(2);
+    expect(summary.reviewDueTotal).toBe(4);
+    expect(summary.firstReviewDueDay?.dayKey).toBe("2026-07-03");
   });
 });

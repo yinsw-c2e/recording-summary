@@ -1070,6 +1070,90 @@ button:disabled {
   color: #1d4ed8;
 }
 
+.month-attention {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.month-attention-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.month-attention-head strong {
+  color: #111827;
+  font-size: 14px;
+}
+
+.month-attention-head small {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.month-attention-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.month-attention-actions button {
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 7px;
+  padding: 7px 9px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #263244;
+  text-align: left;
+}
+
+.month-attention-actions svg {
+  grid-row: span 2;
+}
+
+.month-attention-actions span {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-attention-actions small {
+  min-width: 0;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-attention-actions .pending {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.month-attention-actions .review {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .month-toolbar {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

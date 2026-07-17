@@ -84,6 +84,7 @@ import {
   monthContentFilterLabels,
   monthOverviewDetail,
   monthOverviewHasContent,
+  summarizeMonthAttention,
   type MonthContentFilter
 } from "./monthContent";
 import {
@@ -512,6 +513,8 @@ export function App() {
     () => visibleMonthContentDays.filter((item) => matchesMonthContentFilter(item, monthContentFilter)),
     [monthContentFilter, visibleMonthContentDays]
   );
+  const monthAttention = useMemo(() => summarizeMonthAttention(monthOverview, todayDayKey), [monthOverview, todayDayKey]);
+  const hasMonthAttention = monthAttention.pendingDays > 0 || monthAttention.reviewDueDays > 0;
   const previousContentDay = useMemo(
     () => findAdjacentContentDay(visibleMonthContentDays, activeDay, "previous"),
     [activeDay, visibleMonthContentDays]
@@ -1773,6 +1776,38 @@ export function App() {
             总结
           </span>
         </div>
+        {hasMonthAttention ? (
+          <div className="month-attention" aria-label="本月待清">
+            <div className="month-attention-head">
+              <strong>本月待清</strong>
+              <small>优先处理最早遗留项</small>
+            </div>
+            <div className="month-attention-actions">
+              {monthAttention.pendingDays ? (
+                <button
+                  type="button"
+                  className="pending"
+                  onClick={() => monthAttention.firstPendingDay && selectDay(monthAttention.firstPendingDay.dayKey, { scrollToContent: true })}
+                >
+                  <Clock size={15} />
+                  <span>{monthAttention.pendingTotal} 待处理</span>
+                  <small>{monthAttention.pendingDays} 天 · {monthAttention.firstPendingDay?.dayKey.slice(-2)}日</small>
+                </button>
+              ) : null}
+              {monthAttention.reviewDueDays ? (
+                <button
+                  type="button"
+                  className="review"
+                  onClick={() => monthAttention.firstReviewDueDay && selectDay(monthAttention.firstReviewDueDay.dayKey, { scrollToContent: true })}
+                >
+                  <CheckCircle size={15} />
+                  <span>{monthAttention.reviewDueTotal} 待复习</span>
+                  <small>{monthAttention.reviewDueDays} 天 · {monthAttention.firstReviewDueDay?.dayKey.slice(-2)}日</small>
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="month-toolbar">
           <button type="button" onClick={() => setVisibleMonth((month) => shiftMonth(month || monthFromDay(todayDayKey), -1))}>
             上月
