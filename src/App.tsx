@@ -63,6 +63,8 @@ const typeLabels: Record<string, string> = {
   uncertain: "待确认"
 };
 
+type SpeechSource = "summary" | "focus";
+
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const recordingMimeCandidates = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -162,7 +164,7 @@ export function App() {
   const [authRequired, setAuthRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
-  const [speaking, setSpeaking] = useState(false);
+  const [speechSource, setSpeechSource] = useState<SpeechSource | null>(null);
   const [speechRate, setSpeechRate] = useState(1.5);
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
   const [selectedDayKey, setSelectedDayKey] = useState("");
@@ -178,6 +180,7 @@ export function App() {
   const chunksRef = useRef<BlobPart[]>([]);
   const startedAtRef = useRef(0);
   const dayContentRef = useRef<HTMLDivElement | null>(null);
+  const speechRunRef = useRef(0);
 
   const activeData = selectedDayData ?? today;
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
@@ -216,6 +219,33 @@ export function App() {
     () => (cardTypeFilter === "all" ? cards : cards.filter((card) => card.type === cardTypeFilter)),
     [cards, cardTypeFilter]
   );
+  const focusListeningScript = useMemo(() => {
+    if (!cards.length) return "";
+    const day = selectedDayKey || todayDayKey;
+    const lines = [`${day}重点。共 ${cards.length} 张卡片，${actionItems.length} 个行动项，${reviewCards.length} 个待确认。`];
+    if (actionItems.length) {
+      lines.push("行动项。");
+      actionItems.slice(0, 10).forEach((item, index) => {
+        lines.push(`${index + 1}. ${item.action}。来自：${item.title}。`);
+      });
+      if (actionItems.length > 10) lines.push(`还有 ${actionItems.length - 10} 个行动项，请打开页面查看。`);
+    }
+    if (reviewCards.length) {
+      lines.push("待确认内容。");
+      reviewCards.slice(0, 5).forEach((card, index) => {
+        lines.push(`${index + 1}. ${card.title}。${card.summary}`);
+      });
+      if (reviewCards.length > 5) lines.push(`还有 ${reviewCards.length - 5} 条待确认内容。`);
+    }
+    if (!actionItems.length && !reviewCards.length) {
+      lines.push("今天没有明确行动项或待确认问题。主要卡片包括。");
+      cards.slice(0, 6).forEach((card, index) => {
+        lines.push(`${index + 1}. ${card.title}。${card.summary}`);
+      });
+      if (cards.length > 6) lines.push(`还有 ${cards.length - 6} 张卡片。`);
+    }
+    return lines.join("\n");
+  }, [actionItems, cards, reviewCards, selectedDayKey, todayDayKey]);
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -453,7 +483,7 @@ export function App() {
   async function signOut() {
     await logout();
     window.speechSynthesis?.cancel();
-    setSpeaking(false);
+    setSpeechSource(null);
     setAuthenticated(false);
     setToday(null);
     setSelectedDayData(null);
@@ -466,29 +496,49 @@ export function App() {
     setCardTypeFilter("all");
   }
 
-  function speakSummary(rate = speechRate) {
-    if (!selectedSummary?.listeningScript || !("speechSynthesis" in window)) return;
+  function speakText(text: string, source: SpeechSource, rate = speechRate) {
+    if (!text || !("speechSynthesis" in window)) return;
+    const runId = speechRunRef.current + 1;
+    speechRunRef.current = runId;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(selectedSummary.listeningScript);
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "zh-CN";
     utterance.rate = rate;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    setSpeaking(true);
+    utterance.onend = () => {
+      if (speechRunRef.current === runId) setSpeechSource(null);
+    };
+    utterance.onerror = () => {
+      if (speechRunRef.current === runId) setSpeechSource(null);
+    };
+    setSpeechSource(source);
     window.speechSynthesis.speak(utterance);
+  }
+
+  function speakSummary(rate = speechRate) {
+    if (!selectedSummary?.listeningScript) return;
+    speakText(selectedSummary.listeningScript, "summary", rate);
+  }
+
+  function speakFocus(rate = speechRate) {
+    speakText(focusListeningScript, "focus", rate);
   }
 
   function changeSpeechRate(rate: number) {
     setSpeechRate(rate);
-    if (speaking) {
+    if (speechSource) {
+      const currentSource = speechSource;
       window.speechSynthesis?.cancel();
-      window.setTimeout(() => speakSummary(rate), 0);
+      window.setTimeout(() => {
+        if (currentSource === "summary") speakSummary(rate);
+        if (currentSource === "focus") speakFocus(rate);
+      }, 0);
     }
   }
 
   function stopSpeaking() {
+    speechRunRef.current += 1;
     window.speechSynthesis?.cancel();
-    setSpeaking(false);
+    setSpeechSource(null);
   }
 
   const statusLine = useMemo(() => {
@@ -717,6 +767,15 @@ export function App() {
             <small>待确认</small>
           </div>
         </div>
+        <button
+          className="focus-speech"
+          type="button"
+          disabled={!focusListeningScript || !("speechSynthesis" in window)}
+          onClick={speechSource === "focus" ? stopSpeaking : () => speakFocus()}
+        >
+          <Volume2 size={16} />
+          {speechSource === "focus" ? "停止朗读" : `朗读重点 ${speechRate}x`}
+        </button>
         <div className="focus-block">
           <strong>行动项</strong>
           {actionItems.length ? (
@@ -838,10 +897,10 @@ export function App() {
             <button
               className="speech-main"
               disabled={!selectedSummary?.listeningScript || !("speechSynthesis" in window)}
-              onClick={speaking ? stopSpeaking : () => speakSummary()}
+              onClick={speechSource === "summary" ? stopSpeaking : () => speakSummary()}
             >
               <Volume2 size={16} />
-              {speaking ? "停止朗读" : `朗读总结 ${speechRate}x`}
+              {speechSource === "summary" ? "停止朗读" : `朗读总结 ${speechRate}x`}
             </button>
           </div>
           <pre className="summary-markdown">{summaryMarkdown || "暂无总结内容"}</pre>

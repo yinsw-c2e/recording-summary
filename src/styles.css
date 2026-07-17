@@ -406,6 +406,17 @@ button:disabled {
   font-size: 12px;
 }
 
+.focus-speech {
+  width: 100%;
+  min-height: 40px;
+  justify-content: center;
+  border: 1px solid #263244;
+  border-radius: 8px;
+  background: #263244;
+  color: #ffffff;
+  font-weight: 800;
+}
+
 .focus-block {
   display: grid;
   gap: 8px;
