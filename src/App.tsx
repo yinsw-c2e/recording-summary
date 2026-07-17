@@ -225,14 +225,31 @@ export function App() {
   const dayContentRef = useRef<HTMLDivElement | null>(null);
   const speechRunRef = useRef(0);
 
-  const activeData = selectedDayData ?? today;
+  const todayDayKeyValue = today?.keys.day ?? todayKey();
+  const activeDay = selectedDayKey || todayDayKeyValue;
+  const isSelectedToday = activeDay === todayDayKeyValue;
+  const selectedDayDataMatches = selectedDayData?.keys.day === activeDay;
+  const activeData = selectedDayDataMatches ? selectedDayData : isSelectedToday ? today : null;
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
   const selectedKey = activeData?.keys[selectedPeriod] ?? "";
   const cards = activeData?.stats.cards ?? [];
   const recordings = activeData?.recordings ?? [];
   const worker = today?.worker;
-  const todayDayKey = today?.keys.day ?? todayKey();
+  const todayDayKey = todayDayKeyValue;
   const overviewByDay = useMemo(() => new Map(monthOverview.map((item) => [item.dayKey, item])), [monthOverview]);
+  const selectedDayOverview = overviewByDay.get(activeDay);
+  const selectedDaySnapshot = useMemo(() => {
+    const daySummary = activeData?.summaries.day;
+    const summaryVersion = daySummary?.version ?? selectedDayOverview?.summaryVersion ?? null;
+    const hasDaySummary = Boolean(daySummary || selectedDayOverview?.hasSummary);
+    return {
+      recordings: activeData?.stats.recordings ?? selectedDayOverview?.recordings ?? 0,
+      pending: activeData?.stats.pending ?? selectedDayOverview?.pending ?? 0,
+      cards: activeData?.stats.cards.length ?? selectedDayOverview?.cards ?? 0,
+      summaryLabel: summaryVersion ? `v${summaryVersion}` : hasDaySummary ? "已生成" : "未生成"
+    };
+  }, [activeData, selectedDayOverview]);
+  const dayDataLoading = authenticated && Boolean(activeDay) && !activeData;
   const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
   const actionItems = useMemo(
     () =>
@@ -371,6 +388,10 @@ export function App() {
 
   function navigateDay(delta: number) {
     selectDay(shiftDayKey(selectedDayKey || todayDayKey, delta), { scrollToContent: true });
+  }
+
+  function jumpToToday() {
+    selectDay(todayDayKey, { scrollToContent: true });
   }
 
   function jumpToSearchResult(day: string) {
@@ -826,6 +847,33 @@ export function App() {
             <span>下一天</span>
             <ChevronRight size={17} />
           </button>
+        </div>
+        <div className="selected-day-strip">
+          <span>
+            {dayDataLoading ? <Loader2 className="spin" size={14} /> : <CalendarDays size={14} />}
+            {dayDataLoading ? "正在加载这一天" : isSelectedToday ? "正在看今天" : "正在看历史日期"}
+          </span>
+          <button type="button" disabled={isSelectedToday} onClick={jumpToToday}>
+            回到今天
+          </button>
+        </div>
+        <div className="day-overview" aria-label="所选日期概览">
+          <span>
+            <strong>{selectedDaySnapshot.recordings}</strong>
+            录音
+          </span>
+          <span className={selectedDaySnapshot.pending ? "warn" : ""}>
+            <strong>{selectedDaySnapshot.pending}</strong>
+            待处理
+          </span>
+          <span>
+            <strong>{selectedDaySnapshot.cards}</strong>
+            卡片
+          </span>
+          <span>
+            <strong>{selectedDaySnapshot.summaryLabel}</strong>
+            总结
+          </span>
         </div>
         <div className="month-toolbar">
           <button type="button" onClick={() => setVisibleMonth((month) => shiftMonth(month || monthFromDay(todayDayKey), -1))}>

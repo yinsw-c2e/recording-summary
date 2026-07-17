@@ -543,6 +543,76 @@ button:disabled {
   font-weight: 800;
 }
 
+.selected-day-strip {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.selected-day-strip span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.selected-day-strip button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.day-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.day-overview span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 6px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.day-overview strong {
+  color: #111827;
+  font-size: 15px;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.day-overview .warn {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.day-overview .warn strong {
+  color: #c2410c;
+}
+
 .month-toolbar {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
