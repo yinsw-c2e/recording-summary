@@ -66,8 +66,10 @@ const typeLabels: Record<string, string> = {
 
 type SpeechSource = "summary" | "focus";
 type CopySource = "focus" | "summary" | `card:${string}`;
+type CompletedActions = Record<string, true>;
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
+const completedActionsStorageKey = "recording-summary.completed-actions.v1";
 const recordingMimeCandidates = [
   "audio/mp4;codecs=mp4a.40.2",
   "audio/mp4",
@@ -156,7 +158,19 @@ function markdownList(items: string[], emptyText: string): string[] {
   return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
 }
 
-function cardMarkdown(card: ThoughtCard): string {
+function readCompletedActions(): CompletedActions {
+  if (typeof window === "undefined") return {};
+  try {
+    const payload = window.localStorage.getItem(completedActionsStorageKey);
+    if (!payload) return {};
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => value === true)) as CompletedActions;
+  } catch {
+    return {};
+  }
+}
+
+function cardMarkdown(card: ThoughtCard, completedActions: CompletedActions = {}): string {
   return [
     `# ${card.title}`,
     "",
@@ -170,7 +184,7 @@ function cardMarkdown(card: ThoughtCard): string {
     ...markdownList(card.keyPoints, "暂无关键点"),
     "",
     "## 行动项",
-    ...markdownList(card.actions.map((action) => `[ ] ${action}`), "暂无行动项"),
+    ...markdownList(card.actions.map((action, index) => `[${completedActions[`${card.id}-${index}`] ? "x" : " "}] ${action}`), "暂无行动项"),
     "",
     "## 标签",
     ...markdownList(card.tags, "暂无标签")
@@ -203,6 +217,7 @@ export function App() {
   const [searchResults, setSearchResults] = useState<CardSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [cardTypeFilter, setCardTypeFilter] = useState("all");
+  const [completedActions, setCompletedActions] = useState<CompletedActions>(() => readCompletedActions());
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -247,16 +262,23 @@ export function App() {
     () => (cardTypeFilter === "all" ? cards : cards.filter((card) => card.type === cardTypeFilter)),
     [cards, cardTypeFilter]
   );
+  const completedActionCount = useMemo(
+    () => actionItems.filter((item) => completedActions[item.id]).length,
+    [actionItems, completedActions]
+  );
   const focusListeningScript = useMemo(() => {
     if (!cards.length) return "";
     const day = selectedDayKey || todayDayKey;
-    const lines = [`${day}重点。共 ${cards.length} 张卡片，${actionItems.length} 个行动项，${reviewCards.length} 个待确认。`];
+    const pendingActionItems = actionItems.filter((item) => !completedActions[item.id]);
+    const lines = [
+      `${day}重点。共 ${cards.length} 张卡片，${actionItems.length} 个行动项，已完成 ${completedActionCount} 个，${reviewCards.length} 个待确认。`
+    ];
     if (actionItems.length) {
-      lines.push("行动项。");
-      actionItems.slice(0, 10).forEach((item, index) => {
+      lines.push(pendingActionItems.length ? "未完成行动项。" : "所有行动项已完成。");
+      pendingActionItems.slice(0, 10).forEach((item, index) => {
         lines.push(`${index + 1}. ${item.action}。来自：${item.title}。`);
       });
-      if (actionItems.length > 10) lines.push(`还有 ${actionItems.length - 10} 个行动项，请打开页面查看。`);
+      if (pendingActionItems.length > 10) lines.push(`还有 ${pendingActionItems.length - 10} 个未完成行动项，请打开页面查看。`);
     }
     if (reviewCards.length) {
       lines.push("待确认内容。");
@@ -273,7 +295,7 @@ export function App() {
       if (cards.length > 6) lines.push(`还有 ${cards.length - 6} 张卡片。`);
     }
     return lines.join("\n");
-  }, [actionItems, cards, reviewCards, selectedDayKey, todayDayKey]);
+  }, [actionItems, cards, completedActionCount, completedActions, reviewCards, selectedDayKey, todayDayKey]);
   const focusExportMarkdown = useMemo(() => {
     if (!cards.length) return "";
     const day = selectedDayKey || todayDayKey;
@@ -282,11 +304,12 @@ export function App() {
       "",
       `- 卡片：${cards.length}`,
       `- 行动项：${actionItems.length}`,
+      `- 已完成行动项：${completedActionCount}`,
       `- 待确认：${reviewCards.length}`,
       "",
       "## 行动项",
       ...markdownList(
-        actionItems.map((item) => `[ ] ${item.action}（${typeLabels[item.type] ?? item.type}：${item.title}）`),
+        actionItems.map((item) => `[${completedActions[item.id] ? "x" : " "}] ${item.action}（${typeLabels[item.type] ?? item.type}：${item.title}）`),
         "暂无明确行动项"
       )
     ];
@@ -302,7 +325,7 @@ export function App() {
     );
 
     return lines.join("\n");
-  }, [actionItems, cards, reviewCards, selectedDayKey, todayDayKey]);
+  }, [actionItems, cards, completedActionCount, completedActions, reviewCards, selectedDayKey, todayDayKey]);
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -357,6 +380,18 @@ export function App() {
     }, 0);
   }
 
+  function toggleActionDone(id: string) {
+    setCompletedActions((current) => {
+      const next = { ...current };
+      if (next[id]) {
+        delete next[id];
+      } else {
+        next[id] = true;
+      }
+      return next;
+    });
+  }
+
   useEffect(() => {
     getAuthStatus()
       .then(async (status) => {
@@ -377,6 +412,14 @@ export function App() {
         setError(err.message);
       });
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(completedActionsStorageKey, JSON.stringify(completedActions));
+    } catch {
+      // Ignore private-mode or quota failures; the checkbox state still works for this session.
+    }
+  }, [completedActions]);
 
   useEffect(() => {
     if (!authenticated || !selectedDayKey) return;
@@ -844,7 +887,7 @@ export function App() {
             <small>卡片</small>
           </div>
           <div>
-            <span>{actionItems.length}</span>
+            <span>{actionItems.length ? `${completedActionCount}/${actionItems.length}` : 0}</span>
             <small>行动项</small>
           </div>
           <div>
@@ -877,12 +920,17 @@ export function App() {
           {actionItems.length ? (
             <div className="action-list">
               {actionItems.slice(0, 6).map((item) => (
-                <div key={item.id} className="action-item">
+                <label key={item.id} className={`action-item ${completedActions[item.id] ? "done" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(completedActions[item.id])}
+                    onChange={() => toggleActionDone(item.id)}
+                  />
                   <span>{item.action}</span>
                   <small>
                     {typeLabels[item.type] ?? item.type} · {item.title}
                   </small>
-                </div>
+                </label>
               ))}
               {actionItems.length > 6 ? <small className="more-count">还有 {actionItems.length - 6} 个行动项</small> : null}
             </div>
@@ -1089,7 +1137,7 @@ export function App() {
                 key={card.id}
                 card={card}
                 copied={copiedSource === `card:${card.id}`}
-                onCopy={() => copyText(cardMarkdown(card), `card:${card.id}`)}
+                onCopy={() => copyText(cardMarkdown(card, completedActions), `card:${card.id}`)}
               />
             ))
           ) : (

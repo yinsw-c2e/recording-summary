@@ -451,11 +451,19 @@ button:disabled {
 
 .action-item {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 4px;
   padding: 10px;
   border: 1px solid #e1e5eb;
   border-radius: 8px;
   background: #fffdf8;
+}
+
+.action-item input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 4px 0 0;
+  accent-color: #111827;
 }
 
 .action-item span {
@@ -466,9 +474,23 @@ button:disabled {
 }
 
 .action-item small {
+  grid-column: 2;
   color: #9a3412;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.action-item.done {
+  background: #f8fafc;
+}
+
+.action-item.done span {
+  color: #667085;
+  text-decoration: line-through;
+}
+
+.action-item.done small {
+  color: #667085;
 }
 
 .more-count {
