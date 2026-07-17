@@ -34,6 +34,15 @@ export const organizedCardSchema = z.object({
   confidence: z.number().min(0).max(1).default(0.6)
 });
 
+export const editCardSchema = z.object({
+  type: cardTypeSchema,
+  title: z.string().trim().min(1).max(120),
+  summary: z.string().trim().min(1).max(2000),
+  keyPoints: z.array(z.string().trim().min(1)).max(30).default([]),
+  actions: z.array(z.string().trim().min(1)).max(30).default([]),
+  tags: z.array(z.string().trim().min(1).max(32)).max(12).default([])
+});
+
 export const organizeResultSchema = z.object({
   cleanedTranscript: z.string().default(""),
   items: z.array(organizedCardSchema).default([])

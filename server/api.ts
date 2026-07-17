@@ -47,8 +47,10 @@ import {
   organizeNew,
   regenerateStableSummary,
   regenerateSummary,
-  saveManualTranscriptAndOrganize
+  saveManualTranscriptAndOrganize,
+  updateThoughtCardAndRefreshSummaries
 } from "./workflows";
+import { editCardSchema } from "./schema";
 import {
   authRequired,
   clearSessionCookie,
@@ -264,6 +266,23 @@ export function buildServer(handle: DbHandle = openDb()) {
       createdAt: transcript.createdAt,
       updatedAt: transcript.updatedAt
     };
+  });
+
+  app.patch("/api/cards/:id", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    const parsed = editCardSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid card payload", issues: parsed.error.flatten() });
+    }
+
+    try {
+      return await updateThoughtCardAndRefreshSummaries(handle, tts, { cardId: id, ...parsed.data });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("card not found")) {
+        return reply.code(404).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   app.post("/api/recordings/:id/transcript/organize", async (request, reply) => {

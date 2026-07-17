@@ -813,6 +813,66 @@ export function insertCard(handle: DbHandle, input: Omit<ThoughtCard, "id" | "cr
   };
 }
 
+export function getCard(handle: DbHandle, cardId: string): ThoughtCard | null {
+  const row = handle.db.prepare("SELECT * FROM thought_cards WHERE id = ?").get(cardId) as Record<string, unknown> | undefined;
+  return row ? mapCard(row) : null;
+}
+
+export function getCardPeriodKeys(handle: DbHandle, cardId: string): Record<Period, string> | null {
+  const row = handle.db
+    .prepare(
+      `SELECT r.day_key AS day, r.week_key AS week, r.month_key AS month
+       FROM thought_cards c
+       JOIN recordings r ON r.id = c.source_recording_id
+       WHERE c.id = ?`
+    )
+    .get(cardId) as { day: string; week: string; month: string } | undefined;
+  return row ?? null;
+}
+
+export function updateCard(
+  handle: DbHandle,
+  cardId: string,
+  input: Pick<ThoughtCard, "type" | "title" | "summary" | "keyPoints" | "actions" | "tags">
+): ThoughtCard | null {
+  const existing = getCard(handle, cardId);
+  if (!existing) return null;
+
+  const stamp = now();
+  handle.db
+    .prepare(
+      `UPDATE thought_cards
+       SET type = @type,
+           title = @title,
+           summary = @summary,
+           key_points_json = @keyPointsJson,
+           actions_json = @actionsJson,
+           tags_json = @tagsJson,
+           confidence = 1,
+           updated_at = @updatedAt,
+           raw_json = @rawJson
+       WHERE id = @id`
+    )
+    .run({
+      id: cardId,
+      type: input.type,
+      title: input.title,
+      summary: input.summary,
+      keyPointsJson: JSON.stringify(input.keyPoints),
+      actionsJson: JSON.stringify(input.actions),
+      tagsJson: JSON.stringify(input.tags),
+      updatedAt: stamp,
+      rawJson: JSON.stringify({
+        source: "manual_card_edit",
+        editedAt: stamp,
+        previousTitle: existing.title,
+        previousType: existing.type
+      })
+    });
+
+  return getCard(handle, cardId);
+}
+
 export function insertRelation(handle: DbHandle, input: Omit<CardRelation, "id" | "createdAt">): CardRelation {
   const relation: CardRelation = { ...input, id: nanoid(), createdAt: now() };
   handle.db

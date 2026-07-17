@@ -8,6 +8,7 @@ import {
   deleteRecordingCascade,
   finishJob,
   getCardsForPeriod,
+  getCardPeriodKeys,
   getJobByHash,
   getLatestSummary,
   getNextCardVersionForRecording,
@@ -23,6 +24,7 @@ import {
   markTranscriptionJobSuspect,
   completeTranscriptionJob,
   nextSummaryVersion,
+  updateCard,
   updateRecordingStatus,
   upsertTranscript,
   type DbHandle
@@ -460,6 +462,43 @@ export async function saveManualTranscriptAndOrganize(
     relationsCreated: result.relationsCreated,
     summary
   };
+}
+
+export async function updateThoughtCardAndRefreshSummaries(
+  handle: DbHandle,
+  tts: TTSProvider,
+  input: {
+    cardId: string;
+    type: ThoughtCard["type"];
+    title: string;
+    summary: string;
+    keyPoints: string[];
+    actions: string[];
+    tags: string[];
+  }
+): Promise<{ card: ThoughtCard; summaries: Partial<Record<Period, SummaryArtifact>> }> {
+  const card = updateCard(handle, input.cardId, {
+    type: input.type,
+    title: input.title,
+    summary: input.summary,
+    keyPoints: input.keyPoints,
+    actions: input.actions,
+    tags: input.tags
+  });
+  if (!card) throw new Error("card not found");
+
+  await removeCardMarkdownFiles([card.id]);
+  await persistCardMarkdown(card);
+
+  const keys = getCardPeriodKeys(handle, card.id);
+  const summaries: Partial<Record<Period, SummaryArtifact>> = {};
+  if (keys) {
+    for (const period of ["day", "week", "month"] as Period[]) {
+      summaries[period] = await regenerateStableSummary(handle, tts, period, keys[period]);
+    }
+  }
+
+  return { card, summaries };
 }
 
 export async function regenerateStableSummary(handle: DbHandle, tts: TTSProvider, period: Period, periodKey: string): Promise<SummaryArtifact> {

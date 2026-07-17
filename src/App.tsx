@@ -14,6 +14,7 @@ import {
   Loader2,
   LogOut,
   Mic,
+  Pencil,
   Volume2,
   RefreshCw,
   RotateCcw,
@@ -48,6 +49,7 @@ import {
   retryTranscription,
   searchCards,
   saveTranscriptAndOrganize,
+  updateThoughtCard,
   uploadRecording,
   type Period,
   type CardSearchResult,
@@ -87,6 +89,14 @@ type SpeechSource = "summary" | "focus";
 type CopySource = "focus" | "summary" | `card:${string}` | `transcript:${string}`;
 type CompletedActions = Record<string, true>;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
+type CardDraft = {
+  type: string;
+  title: string;
+  summary: string;
+  keyPoints: string;
+  actions: string;
+  tags: string;
+};
 type FocusActionItem = {
   id: string;
   action: string;
@@ -225,6 +235,39 @@ function canEditTranscript(item: RecordingListItem): boolean {
   return item.cardCount === 0 && !["uploaded", "transcription_queued", "transcribing", "organizing"].includes(item.status);
 }
 
+function listToText(items: string[]): string {
+  return items.join("\n");
+}
+
+function textToLines(value: string): string[] {
+  return value
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function textToTags(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[,\n，、]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function draftFromCard(card: ThoughtCard): CardDraft {
+  return {
+    type: card.type,
+    title: card.title,
+    summary: card.summary,
+    keyPoints: listToText(card.keyPoints),
+    actions: listToText(card.actions),
+    tags: listToText(card.tags)
+  };
+}
+
 function markdownList(items: string[], emptyText: string): string[] {
   return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
 }
@@ -285,6 +328,15 @@ export function App() {
   const [transcriptLoadingId, setTranscriptLoadingId] = useState("");
   const [editingTranscriptId, setEditingTranscriptId] = useState("");
   const [transcriptDraft, setTranscriptDraft] = useState("");
+  const [editingCardId, setEditingCardId] = useState("");
+  const [cardDraft, setCardDraft] = useState<CardDraft>(() => ({
+    type: "daily_note",
+    title: "",
+    summary: "",
+    keyPoints: "",
+    actions: "",
+    tags: ""
+  }));
   const [selectedDayKey, setSelectedDayKey] = useState("");
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
   const [visibleMonth, setVisibleMonth] = useState("");
@@ -477,6 +529,7 @@ export function App() {
     setOpenTranscriptId("");
     setEditingTranscriptId("");
     setTranscriptDraft("");
+    setEditingCardId("");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -752,6 +805,33 @@ export function App() {
     });
   }
 
+  function startEditingCard(card: ThoughtCard) {
+    setEditingCardId(card.id);
+    setCardDraft(draftFromCard(card));
+    setError("");
+  }
+
+  async function saveCardEdit(card: ThoughtCard) {
+    const title = cardDraft.title.trim();
+    const summary = cardDraft.summary.trim();
+    if (!title || !summary) {
+      setError("卡片标题和摘要不能为空。");
+      return;
+    }
+
+    await runAction("card-edit", async () => {
+      await updateThoughtCard(card.id, {
+        type: cardDraft.type,
+        title,
+        summary,
+        keyPoints: textToLines(cardDraft.keyPoints),
+        actions: textToLines(cardDraft.actions),
+        tags: textToTags(cardDraft.tags)
+      });
+      setEditingCardId("");
+    });
+  }
+
   async function submitLogin(event: FormEvent) {
     event.preventDefault();
     setError("");
@@ -785,6 +865,7 @@ export function App() {
     setEditingTranscriptId("");
     setTranscriptDraft("");
     setTranscripts({});
+    setEditingCardId("");
     setVisibleMonth("");
     setMonthOverview([]);
     setSearchQuery("");
@@ -1564,6 +1645,13 @@ export function App() {
                 card={card}
                 copied={copiedSource === `card:${card.id}`}
                 onCopy={() => copyText(cardMarkdown(card, completedActions), `card:${card.id}`)}
+                isEditing={editingCardId === card.id}
+                draft={cardDraft}
+                busy={busy}
+                onStartEdit={() => startEditingCard(card)}
+                onDraftChange={setCardDraft}
+                onCancelEdit={() => setEditingCardId("")}
+                onSaveEdit={() => saveCardEdit(card)}
               />
             ))
           ) : (
@@ -1575,8 +1663,83 @@ export function App() {
   );
 }
 
-function ThoughtCardItem({ card, copied, onCopy }: { card: ThoughtCard; copied: boolean; onCopy: () => void }) {
+function ThoughtCardItem({
+  card,
+  copied,
+  onCopy,
+  isEditing,
+  draft,
+  busy,
+  onStartEdit,
+  onDraftChange,
+  onCancelEdit,
+  onSaveEdit
+}: {
+  card: ThoughtCard;
+  copied: boolean;
+  onCopy: () => void;
+  isEditing: boolean;
+  draft: CardDraft;
+  busy: string | null;
+  onStartEdit: () => void;
+  onDraftChange: (draft: CardDraft) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const updateDraft = (patch: Partial<CardDraft>) => onDraftChange({ ...draft, ...patch });
+
+  if (isEditing) {
+    return (
+      <article className="thought-card card-editing">
+        <div className="card-head">
+          <span>编辑卡片</span>
+          <small>人工确认</small>
+        </div>
+        <div className="card-editor">
+          <label>
+            <span>分类</span>
+            <select value={draft.type} onChange={(event) => updateDraft({ type: event.target.value })}>
+              {cardTypeOrder.map((type) => (
+                <option key={type} value={type}>
+                  {typeLabels[type] ?? type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>标题</span>
+            <input value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} />
+          </label>
+          <label>
+            <span>摘要</span>
+            <textarea value={draft.summary} onChange={(event) => updateDraft({ summary: event.target.value })} />
+          </label>
+          <label>
+            <span>关键点（一行一条）</span>
+            <textarea value={draft.keyPoints} onChange={(event) => updateDraft({ keyPoints: event.target.value })} />
+          </label>
+          <label>
+            <span>行动项（一行一条）</span>
+            <textarea value={draft.actions} onChange={(event) => updateDraft({ actions: event.target.value })} />
+          </label>
+          <label>
+            <span>标签（一行或逗号分隔）</span>
+            <textarea value={draft.tags} onChange={(event) => updateDraft({ tags: event.target.value })} />
+          </label>
+        </div>
+        <div className="card-editor-actions">
+          <button type="button" className="card-toggle" disabled={busy !== null} onClick={onCancelEdit}>
+            取消
+          </button>
+          <button type="button" className="copy-button primary" disabled={busy !== null} onClick={onSaveEdit}>
+            {busy === "card-edit" ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
+            保存卡片
+          </button>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className="thought-card">
@@ -1618,6 +1781,10 @@ function ThoughtCardItem({ card, copied, onCopy }: { card: ThoughtCard; copied: 
         <button type="button" className={`card-toggle ${expanded ? "expanded" : ""}`} onClick={() => setExpanded((current) => !current)}>
           <ChevronRight size={16} />
           {expanded ? "收起" : "展开"}
+        </button>
+        <button type="button" className="card-toggle" disabled={busy !== null} onClick={onStartEdit}>
+          <Pencil size={16} />
+          编辑
         </button>
         <button type="button" className="copy-button" onClick={onCopy}>
           {copied ? <Check size={16} /> : <Clipboard size={16} />}

@@ -62,6 +62,20 @@ export interface ManualTranscriptOrganizeResult {
   summary: SummaryArtifact | null;
 }
 
+export interface CardEditInput {
+  type: string;
+  title: string;
+  summary: string;
+  keyPoints: string[];
+  actions: string[];
+  tags: string[];
+}
+
+export interface CardEditResult {
+  card: ThoughtCard;
+  summaries: Partial<Record<Period, SummaryArtifact>>;
+}
+
 export interface WorkerSnapshot {
   queue: Record<string, number>;
   workers: Array<{
@@ -164,6 +178,14 @@ export function attachTranscript(recordingId: string, text: string): Promise<{ o
 
 export function getRecordingTranscript(recordingId: string): Promise<RecordingTranscript> {
   return json(`/api/recordings/${recordingId}/transcript`);
+}
+
+export function updateThoughtCard(cardId: string, input: CardEditInput): Promise<CardEditResult> {
+  return json(`/api/cards/${cardId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input)
+  });
 }
 
 export function saveTranscriptAndOrganize(recordingId: string, text: string): Promise<ManualTranscriptOrganizeResult> {

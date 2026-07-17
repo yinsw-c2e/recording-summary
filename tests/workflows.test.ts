@@ -787,6 +787,67 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("updates an edited card and refreshes affected summaries", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const [{ openDb, createAudioAsset, createRecording, getCardsForPeriod, getLatestSummary, upsertTranscript }, { MockLLMProvider }, workflows, { dayKey, weekKey, monthKey }] =
+      await Promise.all([
+        import("../server/db"),
+        import("../server/providers/mockLlm"),
+        import("../server/workflows"),
+        import("../server/time")
+      ]);
+
+    const handle = openDb();
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "edit-card-r1",
+      path: "raw_audio/edit-card-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "edit-card-r1",
+      audioPath: "raw_audio/edit-card-r1.webm",
+      audioAssetId: asset.id,
+      duration: 12,
+      mimeType: "audio/webm"
+    });
+    upsertTranscript(handle, {
+      recordingId: "edit-card-r1",
+      rawText: "我需要把卡片编辑功能做出来，保存后刷新总结。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/edit-card-r1.txt"
+    });
+
+    await workflows.organizeNew(handle, new MockLLMProvider());
+    const today = dayKey(new Date());
+    const card = getCardsForPeriod(handle, "day", today)[0];
+    expect(card).toBeDefined();
+
+    const result = await workflows.updateThoughtCardAndRefreshSummaries(handle, { synthesize: async () => null }, {
+      cardId: card.id,
+      type: "task",
+      title: "人工修正后的卡片标题",
+      summary: "这张卡片已经由用户确认并改成更准确的摘要。",
+      keyPoints: ["用户可以改卡片", "保存后刷新总结"],
+      actions: ["上线卡片编辑能力"],
+      tags: ["卡片编辑", "人工确认"]
+    });
+
+    expect(result.card.title).toBe("人工修正后的卡片标题");
+    expect(result.card.confidence).toBe(1);
+    expect(getCardsForPeriod(handle, "day", today)[0]?.summary).toContain("更准确的摘要");
+    expect(getLatestSummary(handle, "day", today)?.listeningScript).toContain("人工修正后的卡片标题");
+    expect(getLatestSummary(handle, "week", weekKey(new Date()))?.listeningScript).toContain("人工修正后的卡片标题");
+    expect(getLatestSummary(handle, "month", monthKey(new Date()))?.listeningScript).toContain("人工修正后的卡片标题");
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("saves a manual transcript for one recording and organizes it", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });
