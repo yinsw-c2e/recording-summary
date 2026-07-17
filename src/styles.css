@@ -880,6 +880,36 @@ audio {
   gap: 8px;
 }
 
+.recording-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.recording-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.recording-filter button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.recording-filter button.active {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
+}
+
 .recording-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 38px;

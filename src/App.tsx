@@ -46,6 +46,13 @@ import {
   type ThoughtCard,
   type TodayResponse
 } from "./api";
+import {
+  countRecordingFilters,
+  matchesRecordingFilter,
+  processingStatuses,
+  recordingFilters,
+  type RecordingFilter
+} from "./recordingFilters";
 
 const periodLabels: Record<Period, string> = {
   day: "日",
@@ -79,7 +86,6 @@ const recordingMimeCandidates = [
   "audio/webm"
 ];
 
-const processingStatuses = new Set(["uploaded", "transcription_queued", "transcribing", "transcript_pending", "transcribed", "organizing"]);
 const speechRates = [1, 1.25, 1.5, 1.75, 2];
 
 function preferredRecordingMimeType(): string {
@@ -243,6 +249,7 @@ export function App() {
   const [searchResults, setSearchResults] = useState<CardSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [cardTypeFilter, setCardTypeFilter] = useState("all");
+  const [recordingFilter, setRecordingFilter] = useState<RecordingFilter>("all");
   const [completedActions, setCompletedActions] = useState<CompletedActions>(() => readCompletedActions());
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -304,6 +311,11 @@ export function App() {
   const filteredCards = useMemo(
     () => (cardTypeFilter === "all" ? cards : cards.filter((card) => card.type === cardTypeFilter)),
     [cards, cardTypeFilter]
+  );
+  const recordingFilterCounts = useMemo(() => countRecordingFilters(recordings), [recordings]);
+  const filteredRecordings = useMemo(
+    () => recordings.filter((item) => matchesRecordingFilter(item, recordingFilter)),
+    [recordingFilter, recordings]
   );
   const completedActionCount = useMemo(
     () => actionItems.filter((item) => completedActions[item.id]).length,
@@ -409,6 +421,7 @@ export function App() {
     setVisibleMonth(monthFromDay(day));
     setSelectedPeriod("day");
     setCardTypeFilter("all");
+    setRecordingFilter("all");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -1081,9 +1094,24 @@ export function App() {
           <FileAudio size={18} />
           <h2>{selectedDayKey === todayDayKey ? "今日录音" : `${selectedDayKey} 录音`}</h2>
         </div>
+        {recordings.length ? (
+          <div className="recording-filter" aria-label="录音状态筛选">
+            {recordingFilters.map((filter) => (
+              <button
+                type="button"
+                key={filter.key}
+                className={recordingFilter === filter.key ? "active" : ""}
+                aria-pressed={recordingFilter === filter.key}
+                onClick={() => setRecordingFilter(filter.key)}
+              >
+                {filter.label} {recordingFilterCounts[filter.key]}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="recording-list">
-          {recordings.length ? (
-            recordings.map((item) => {
+          {filteredRecordings.length ? (
+            filteredRecordings.map((item) => {
               const tone = statusTone(item.status);
               return (
                 <article className="recording-item" key={item.id}>
@@ -1120,6 +1148,8 @@ export function App() {
                 </article>
               );
             })
+          ) : recordings.length ? (
+            <div className="empty-card">当前筛选下没有录音</div>
           ) : (
             <div className="empty-card">暂无录音</div>
           )}
