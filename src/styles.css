@@ -424,7 +424,7 @@ button:disabled {
 
 .focus-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -496,6 +496,71 @@ button:disabled {
 .focus-block-head > strong {
   color: #263244;
   font-size: 14px;
+}
+
+.focus-block-head.with-action {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.focus-block-head.with-action button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.starred-focus {
+  padding: 10px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.starred-card-list {
+  display: grid;
+  gap: 8px;
+}
+
+.starred-card-item {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #f7d47a;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.starred-card-item div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.starred-card-item strong {
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.starred-card-item small {
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.starred-card-item p {
+  margin: 0;
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .action-filter {

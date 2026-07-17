@@ -70,6 +70,13 @@ import {
   recordingFilters,
   type RecordingFilter
 } from "./recordingFilters";
+import {
+  buildFocusExportMarkdown,
+  buildFocusListeningScript,
+  markdownList,
+  type CompletedActions,
+  type FocusActionItem
+} from "./focusArtifacts";
 
 const periodLabels: Record<Period, string> = {
   day: "日",
@@ -90,7 +97,6 @@ const typeLabels: Record<string, string> = {
 
 type SpeechSource = "summary" | "focus";
 type CopySource = "focus" | "summary" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
-type CompletedActions = Record<string, true>;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type CardDraft = {
   type: string;
@@ -99,12 +105,6 @@ type CardDraft = {
   keyPoints: string;
   actions: string;
   tags: string;
-};
-type FocusActionItem = {
-  id: string;
-  action: string;
-  title: string;
-  type: string;
 };
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
@@ -271,10 +271,6 @@ function draftFromCard(card: ThoughtCard): CardDraft {
   };
 }
 
-function markdownList(items: string[], emptyText: string): string[] {
-  return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
-}
-
 function readCompletedActions(): CompletedActions {
   if (typeof window === "undefined") return {};
   try {
@@ -417,7 +413,8 @@ export function App() {
     [cards]
   );
   const reviewCards = useMemo(() => cards.filter((card) => card.type === "question" || card.type === "uncertain"), [cards]);
-  const starredCardCount = useMemo(() => cards.filter((card) => card.starred).length, [cards]);
+  const starredCards = useMemo(() => cards.filter((card) => card.starred), [cards]);
+  const starredCardCount = starredCards.length;
   const cardTypeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     cards.forEach((card) => counts.set(card.type, (counts.get(card.type) ?? 0) + 1));
@@ -453,66 +450,31 @@ export function App() {
     () => orderedActionItems.filter((item) => matchesActionItemFilter(item, completedActions, actionFilter)),
     [actionFilter, completedActions, orderedActionItems]
   );
-  const focusListeningScript = useMemo(() => {
-    if (!cards.length) return "";
-    const day = activeDay;
-    const pendingActionItems = actionItems.filter((item) => !completedActions[item.id]);
-    const lines = [
-      `${day}重点。共 ${cards.length} 张卡片，${actionItems.length} 个行动项，已完成 ${completedActionCount} 个，${reviewCards.length} 个待确认。`
-    ];
-    if (actionItems.length) {
-      lines.push(pendingActionItems.length ? "未完成行动项。" : "所有行动项已完成。");
-      pendingActionItems.slice(0, 10).forEach((item, index) => {
-        lines.push(`${index + 1}. ${item.action}。来自：${item.title}。`);
-      });
-      if (pendingActionItems.length > 10) lines.push(`还有 ${pendingActionItems.length - 10} 个未完成行动项，请打开页面查看。`);
-    }
-    if (reviewCards.length) {
-      lines.push("待确认内容。");
-      reviewCards.slice(0, 5).forEach((card, index) => {
-        lines.push(`${index + 1}. ${card.title}。${card.summary}`);
-      });
-      if (reviewCards.length > 5) lines.push(`还有 ${reviewCards.length - 5} 条待确认内容。`);
-    }
-    if (!actionItems.length && !reviewCards.length) {
-      lines.push("今天没有明确行动项或待确认问题。主要卡片包括。");
-      cards.slice(0, 6).forEach((card, index) => {
-        lines.push(`${index + 1}. ${card.title}。${card.summary}`);
-      });
-      if (cards.length > 6) lines.push(`还有 ${cards.length - 6} 张卡片。`);
-    }
-    return lines.join("\n");
-  }, [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]);
-  const focusExportMarkdown = useMemo(() => {
-    if (!cards.length) return "";
-    const day = activeDay;
-    const lines = [
-      `# ${day} 重点`,
-      "",
-      `- 卡片：${cards.length}`,
-      `- 行动项：${actionItems.length}`,
-      `- 已完成行动项：${completedActionCount}`,
-      `- 待确认：${reviewCards.length}`,
-      "",
-      "## 行动项",
-      ...markdownList(
-        actionItems.map((item) => `[${completedActions[item.id] ? "x" : " "}] ${item.action}（${typeLabels[item.type] ?? item.type}：${item.title}）`),
-        "暂无明确行动项"
-      )
-    ];
-
-    if (reviewCards.length) {
-      lines.push("", "## 待确认", ...reviewCards.map((card) => `- ${card.title}：${card.summary}`));
-    }
-
-    lines.push(
-      "",
-      "## 卡片",
-      ...cards.map((card) => `- ${typeLabels[card.type] ?? card.type}｜${card.title}：${card.summary}`)
-    );
-
-    return lines.join("\n");
-  }, [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]);
+  const focusListeningScript = useMemo(
+    () =>
+      buildFocusListeningScript({
+        day: activeDay,
+        cards,
+        actionItems,
+        completedActions,
+        completedActionCount,
+        reviewCards
+      }),
+    [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]
+  );
+  const focusExportMarkdown = useMemo(
+    () =>
+      buildFocusExportMarkdown({
+        day: activeDay,
+        cards,
+        actionItems,
+        completedActions,
+        completedActionCount,
+        reviewCards,
+        typeLabels
+      }),
+    [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]
+  );
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -1340,6 +1302,10 @@ export function App() {
             <small>卡片</small>
           </div>
           <div>
+            <span>{starredCards.length}</span>
+            <small>重点</small>
+          </div>
+          <div>
             <span>{actionItems.length ? `${completedActionCount}/${actionItems.length}` : 0}</span>
             <small>行动项</small>
           </div>
@@ -1368,6 +1334,34 @@ export function App() {
             {copiedSource === "focus" ? "已复制" : "复制重点"}
           </button>
         </div>
+        {starredCards.length ? (
+          <div className="focus-block starred-focus">
+            <div className="focus-block-head with-action">
+              <strong>已标重点</strong>
+              <button
+                type="button"
+                onClick={() => {
+                  setCardTypeFilter("starred");
+                  document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                查看全部
+              </button>
+            </div>
+            <div className="starred-card-list">
+              {starredCards.slice(0, 3).map((card) => (
+                <article key={card.id} className="starred-card-item">
+                  <div>
+                    <strong>{card.title}</strong>
+                    <small>{typeLabels[card.type] ?? card.type} · {Math.round(card.confidence * 100)}%</small>
+                  </div>
+                  <p>{card.summary}</p>
+                </article>
+              ))}
+              {starredCards.length > 3 ? <small className="more-count">还有 {starredCards.length - 3} 张重点卡片</small> : null}
+            </div>
+          </div>
+        ) : null}
         <div className="focus-block">
           <div className="focus-block-head">
             <strong>行动项</strong>
