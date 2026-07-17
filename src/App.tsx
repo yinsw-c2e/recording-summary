@@ -47,6 +47,7 @@ import {
   regenerateSummary,
   retryTranscription,
   searchCards,
+  saveTranscriptAndOrganize,
   uploadRecording,
   type Period,
   type CardSearchResult,
@@ -220,6 +221,10 @@ function canRetryTranscription(item: RecordingListItem, sttMode: string | undefi
   );
 }
 
+function canEditTranscript(item: RecordingListItem): boolean {
+  return item.cardCount === 0 && !["uploaded", "transcription_queued", "transcribing", "organizing"].includes(item.status);
+}
+
 function markdownList(items: string[], emptyText: string): string[] {
   return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
 }
@@ -278,6 +283,8 @@ export function App() {
   const [transcripts, setTranscripts] = useState<Record<string, RecordingTranscript>>({});
   const [openTranscriptId, setOpenTranscriptId] = useState("");
   const [transcriptLoadingId, setTranscriptLoadingId] = useState("");
+  const [editingTranscriptId, setEditingTranscriptId] = useState("");
+  const [transcriptDraft, setTranscriptDraft] = useState("");
   const [selectedDayKey, setSelectedDayKey] = useState("");
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
   const [visibleMonth, setVisibleMonth] = useState("");
@@ -468,6 +475,8 @@ export function App() {
     setRecordingFilter("all");
     setActionFilter("open");
     setOpenTranscriptId("");
+    setEditingTranscriptId("");
+    setTranscriptDraft("");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -668,10 +677,16 @@ export function App() {
   async function toggleTranscript(recording: RecordingListItem) {
     if (openTranscriptId === recording.id) {
       setOpenTranscriptId("");
+      if (editingTranscriptId === recording.id) {
+        setEditingTranscriptId("");
+        setTranscriptDraft("");
+      }
       return;
     }
 
     setOpenTranscriptId(recording.id);
+    setEditingTranscriptId("");
+    setTranscriptDraft("");
     if (transcripts[recording.id]) return;
 
     setError("");
@@ -685,6 +700,56 @@ export function App() {
     } finally {
       setTranscriptLoadingId("");
     }
+  }
+
+  async function startEditingTranscript(recording: RecordingListItem) {
+    if (!canEditTranscript(recording)) return;
+
+    setOpenTranscriptId(recording.id);
+    setEditingTranscriptId(recording.id);
+    setError("");
+
+    const cached = transcripts[recording.id];
+    if (cached) {
+      setTranscriptDraft(cached.rawText);
+      return;
+    }
+
+    if (!recording.hasTranscript) {
+      setTranscriptDraft("");
+      return;
+    }
+
+    setTranscriptLoadingId(recording.id);
+    try {
+      const transcript = await getRecordingTranscript(recording.id);
+      setTranscripts((current) => ({ ...current, [recording.id]: transcript }));
+      setTranscriptDraft(transcript.rawText);
+    } catch (err) {
+      setOpenTranscriptId("");
+      setEditingTranscriptId("");
+      setTranscriptDraft("");
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTranscriptLoadingId("");
+    }
+  }
+
+  async function saveTranscriptEdit(recording: RecordingListItem) {
+    const text = transcriptDraft.trim();
+    if (!text) {
+      setError("转写文本不能为空。");
+      return;
+    }
+
+    await runAction("transcript", async () => {
+      await saveTranscriptAndOrganize(recording.id, text);
+      const transcript = await getRecordingTranscript(recording.id);
+      setTranscripts((current) => ({ ...current, [recording.id]: transcript }));
+      setOpenTranscriptId(recording.id);
+      setEditingTranscriptId("");
+      setTranscriptDraft("");
+    });
   }
 
   async function submitLogin(event: FormEvent) {
@@ -716,6 +781,10 @@ export function App() {
     setToday(null);
     setSelectedDayData(null);
     setSelectedDayKey("");
+    setOpenTranscriptId("");
+    setEditingTranscriptId("");
+    setTranscriptDraft("");
+    setTranscripts({});
     setVisibleMonth("");
     setMonthOverview([]);
     setSearchQuery("");
@@ -1241,6 +1310,17 @@ export function App() {
                         {openTranscriptId === item.id ? "收起转写" : "查看转写"}
                       </button>
                     ) : null}
+                    {!item.hasTranscript && canEditTranscript(item) ? (
+                      <button
+                        className="transcript-button"
+                        type="button"
+                        disabled={busy !== null || transcriptLoadingId === item.id}
+                        onClick={() => startEditingTranscript(item)}
+                      >
+                        <FileText size={15} />
+                        补充转写
+                      </button>
+                    ) : null}
                     {canRetryTranscription(item, today?.sttMode) ? (
                       <button
                         className="retry-button"
@@ -1267,11 +1347,52 @@ export function App() {
                     <div className="recording-transcript">
                       {transcriptLoadingId === item.id ? (
                         <div className="empty-card compact">正在读取转写</div>
+                      ) : editingTranscriptId === item.id ? (
+                        <div className="transcript-editor">
+                          <textarea
+                            value={transcriptDraft}
+                            onChange={(event) => setTranscriptDraft(event.target.value)}
+                            placeholder="粘贴或修正这段录音的转写文本，保存后会只整理这一条录音"
+                          />
+                          <div className="transcript-editor-actions">
+                            <button
+                              className="copy-button"
+                              type="button"
+                              disabled={busy !== null}
+                              onClick={() => {
+                                setEditingTranscriptId("");
+                                setTranscriptDraft("");
+                                if (!item.hasTranscript) setOpenTranscriptId("");
+                              }}
+                            >
+                              取消
+                            </button>
+                            <button
+                              className="speech-main"
+                              type="button"
+                              disabled={busy !== null || !transcriptDraft.trim()}
+                              onClick={() => saveTranscriptEdit(item)}
+                            >
+                              {busy === "transcript" ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+                              保存并整理
+                            </button>
+                          </div>
+                        </div>
                       ) : transcripts[item.id] ? (
                         <>
                           <div className="transcript-meta">
                             <span>{transcriptStatusLabel(transcripts[item.id].status)}</span>
                             <span>{transcripts[item.id].language || "未知语言"}</span>
+                            {canEditTranscript(item) ? (
+                              <button
+                                className="transcript-edit-button"
+                                type="button"
+                                disabled={busy !== null}
+                                onClick={() => startEditingTranscript(item)}
+                              >
+                                修正转写
+                              </button>
+                            ) : null}
                             <button
                               className="copy-button"
                               type="button"

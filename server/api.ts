@@ -46,7 +46,8 @@ import {
   deleteRecordingAndRefreshSummaries,
   organizeNew,
   regenerateStableSummary,
-  regenerateSummary
+  regenerateSummary,
+  saveManualTranscriptAndOrganize
 } from "./workflows";
 import {
   authRequired,
@@ -263,6 +264,24 @@ export function buildServer(handle: DbHandle = openDb()) {
       createdAt: transcript.createdAt,
       updatedAt: transcript.updatedAt
     };
+  });
+
+  app.post("/api/recordings/:id/transcript/organize", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    const body = request.body as { text?: string; language?: string };
+    const text = body.text?.trim();
+    if (!text) return reply.code(400).send({ error: "text is required" });
+    try {
+      return await saveManualTranscriptAndOrganize(handle, llm, tts, { recordingId: id, rawText: text, language: body.language ?? "zh" });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("recording already has cards")) {
+        return reply.code(409).send({ error: error.message });
+      }
+      if (error instanceof Error && error.message.includes("recording not found")) {
+        return reply.code(404).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   app.post("/api/recordings/:id/retry-transcription", async (request, reply) => {

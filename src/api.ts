@@ -54,6 +54,14 @@ export interface RecordingTranscript {
   updatedAt: string;
 }
 
+export interface ManualTranscriptOrganizeResult {
+  recordingId: string;
+  status: "completed" | "no_content";
+  cardsCreated: number;
+  relationsCreated: number;
+  summary: SummaryArtifact | null;
+}
+
 export interface WorkerSnapshot {
   queue: Record<string, number>;
   workers: Array<{
@@ -156,6 +164,14 @@ export function attachTranscript(recordingId: string, text: string): Promise<{ o
 
 export function getRecordingTranscript(recordingId: string): Promise<RecordingTranscript> {
   return json(`/api/recordings/${recordingId}/transcript`);
+}
+
+export function saveTranscriptAndOrganize(recordingId: string, text: string): Promise<ManualTranscriptOrganizeResult> {
+  return json(`/api/recordings/${recordingId}/transcript/organize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text })
+  });
 }
 
 export function deleteRecording(recordingId: string): Promise<unknown> {

@@ -786,4 +786,97 @@ describe("organizing workflow", () => {
     handle.db.close();
     await fs.rm(dataDir, { recursive: true, force: true });
   });
+
+  it("saves a manual transcript for one recording and organizes it", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const [{ openDb, createAudioAsset, createRecording, countAll, getLatestSummary, getRecording, getTranscriptForRecording }, { MockLLMProvider }, workflows, { dayKey }] =
+      await Promise.all([
+        import("../server/db"),
+        import("../server/providers/mockLlm"),
+        import("../server/workflows"),
+        import("../server/time")
+      ]);
+
+    const handle = openDb();
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "manual-transcript-r1",
+      path: "raw_audio/manual-transcript-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "manual-transcript-r1",
+      audioPath: "raw_audio/manual-transcript-r1.webm",
+      audioAssetId: asset.id,
+      duration: 15,
+      mimeType: "audio/webm"
+    });
+
+    const llm = new MockLLMProvider();
+    const tts = { synthesize: async () => null };
+    const result = await workflows.saveManualTranscriptAndOrganize(handle, llm, tts, {
+      recordingId: "manual-transcript-r1",
+      rawText: "我需要修正这条录音的转写，然后实现手机 H5 的单条录音整理入口。"
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.cardsCreated).toBeGreaterThan(0);
+    expect(countAll(handle).cards).toBe(result.cardsCreated);
+    expect(getRecording(handle, "manual-transcript-r1")?.status).toBe("organized");
+    expect(getTranscriptForRecording(handle, "manual-transcript-r1")?.rawText).toContain("单条录音整理入口");
+    expect(getLatestSummary(handle, "day", dayKey(new Date()))?.listeningScript).toContain("当前保留 1 条内容");
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("rejects manual transcript edits after a recording has produced cards", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const [{ openDb, createAudioAsset, createRecording, upsertTranscript, countAll }, { MockLLMProvider }, workflows] = await Promise.all([
+      import("../server/db"),
+      import("../server/providers/mockLlm"),
+      import("../server/workflows")
+    ]);
+
+    const handle = openDb();
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "manual-transcript-card-r1",
+      path: "raw_audio/manual-transcript-card-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "manual-transcript-card-r1",
+      audioPath: "raw_audio/manual-transcript-card-r1.webm",
+      audioAssetId: asset.id,
+      duration: 18,
+      mimeType: "audio/webm"
+    });
+    upsertTranscript(handle, {
+      recordingId: "manual-transcript-card-r1",
+      rawText: "我想实现一个已经整理后的录音保护机制。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/manual-transcript-card-r1.txt"
+    });
+
+    await workflows.organizeNew(handle, new MockLLMProvider());
+    expect(countAll(handle).cards).toBeGreaterThan(0);
+
+    await expect(
+      workflows.saveManualTranscriptAndOrganize(handle, new MockLLMProvider(), { synthesize: async () => null }, {
+        recordingId: "manual-transcript-card-r1",
+        rawText: "这条已经产生卡片，不应该再通过单条修正重复整理。"
+      })
+    ).rejects.toThrow("already has cards");
+    expect(countAll(handle).cards).toBeGreaterThan(0);
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
 });

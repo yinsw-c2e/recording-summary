@@ -1100,6 +1100,17 @@ audio {
   min-height: 32px;
 }
 
+.transcript-edit-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .recording-transcript pre {
   margin: 0;
   max-height: 220px;
@@ -1109,6 +1120,35 @@ audio {
   color: #263244;
   line-height: 1.58;
   font-size: 13px;
+}
+
+.transcript-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.transcript-editor textarea {
+  min-height: 132px;
+  resize: vertical;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+  color: #263244;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.transcript-editor-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  gap: 8px;
+}
+
+.transcript-editor-actions .copy-button,
+.transcript-editor-actions .speech-main {
+  width: 100%;
+  min-height: 38px;
 }
 
 .icon-button {

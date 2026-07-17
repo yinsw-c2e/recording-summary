@@ -400,6 +400,68 @@ export async function completeRemoteTranscription(
   };
 }
 
+export async function saveManualTranscriptAndOrganize(
+  handle: DbHandle,
+  llm: LLMProvider,
+  tts: TTSProvider,
+  input: { recordingId: string; rawText: string; language?: string }
+): Promise<{
+  recordingId: string;
+  status: "completed" | "no_content";
+  cardsCreated: number;
+  relationsCreated: number;
+  summary: SummaryArtifact | null;
+}> {
+  const recording = getRecording(handle, input.recordingId);
+  if (!recording) throw new Error("recording not found");
+
+  const cardCount = (handle.db
+    .prepare("SELECT count(*) AS n FROM thought_cards WHERE source_recording_id = ?")
+    .get(input.recordingId) as { n: number }).n;
+  if (cardCount > 0) throw new Error("recording already has cards; use deep reorganize if you need to rebuild it");
+
+  const text = input.rawText.trim();
+  if (!text) throw new Error("text is required");
+
+  const row = handle.db.prepare("SELECT day_key FROM recordings WHERE id = ?").get(input.recordingId) as { day_key: string } | undefined;
+  const periodDayKey = row?.day_key || recording.createdAt.slice(0, 10);
+  const transcriptPath = path.join(dataPaths.rawTranscript, `${input.recordingId}.txt`);
+  await fs.writeFile(transcriptPath, text, "utf8");
+  upsertTranscript(handle, {
+    recordingId: input.recordingId,
+    rawText: text,
+    language: input.language ?? "zh",
+    sourceTimeRanges: "full",
+    status: "completed",
+    path: relativeDataPath(transcriptPath)
+  });
+  updateRecordingStatus(handle, input.recordingId, "transcribed");
+
+  const stamp = new Date().toISOString();
+  handle.db
+    .prepare(
+      `UPDATE transcription_jobs
+       SET status = 'completed', locked_by = NULL, locked_at = NULL, error = NULL, updated_at = ?, finished_at = ?
+       WHERE recording_id = ?`
+    )
+    .run(stamp, stamp, input.recordingId);
+
+  const result = await organizeSingleTranscript(handle, llm, {
+    recordingId: input.recordingId,
+    rawText: text,
+    recordingCreatedAt: recording.createdAt
+  });
+  const summary = result.cardsCreated ? await regenerateStableSummary(handle, tts, "day", periodDayKey) : null;
+
+  return {
+    recordingId: input.recordingId,
+    status: result.cardsCreated ? "completed" : "no_content",
+    cardsCreated: result.cardsCreated,
+    relationsCreated: result.relationsCreated,
+    summary
+  };
+}
+
 export async function regenerateStableSummary(handle: DbHandle, tts: TTSProvider, period: Period, periodKey: string): Promise<SummaryArtifact> {
   const cards = getCardsForPeriod(handle, period, periodKey);
   const relations = getRelationsForCards(handle, cards.map((card) => card.id));
