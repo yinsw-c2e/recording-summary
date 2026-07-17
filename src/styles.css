@@ -855,6 +855,35 @@ audio {
   font-size: 13px;
 }
 
+.card-details {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0f4;
+}
+
+.card-details strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #263244;
+  font-size: 13px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-list span {
+  padding: 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -868,6 +897,33 @@ audio {
   color: #175cd3;
   padding: 4px 8px;
   font-size: 12px;
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.card-toggle {
+  min-width: 0;
+  min-height: 40px;
+  justify-content: center;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.card-toggle svg {
+  transition: transform 120ms ease;
+}
+
+.card-toggle.expanded svg {
+  transform: rotate(90deg);
 }
 
 .empty-card {

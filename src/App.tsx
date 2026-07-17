@@ -65,7 +65,7 @@ const typeLabels: Record<string, string> = {
 };
 
 type SpeechSource = "summary" | "focus";
-type CopySource = "focus" | "summary";
+type CopySource = "focus" | "summary" | `card:${string}`;
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const recordingMimeCandidates = [
@@ -154,6 +154,27 @@ function statusLabel(status: string): string {
 
 function markdownList(items: string[], emptyText: string): string[] {
   return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
+}
+
+function cardMarkdown(card: ThoughtCard): string {
+  return [
+    `# ${card.title}`,
+    "",
+    `- 类型：${typeLabels[card.type] ?? card.type}`,
+    `- 置信度：${Math.round(card.confidence * 100)}%`,
+    "",
+    "## 摘要",
+    card.summary,
+    "",
+    "## 关键点",
+    ...markdownList(card.keyPoints, "暂无关键点"),
+    "",
+    "## 行动项",
+    ...markdownList(card.actions.map((action) => `[ ] ${action}`), "暂无行动项"),
+    "",
+    "## 标签",
+    ...markdownList(card.tags, "暂无标签")
+  ].join("\n");
 }
 
 export function App() {
@@ -1063,7 +1084,14 @@ export function App() {
         ) : null}
         <div className="card-list">
           {filteredCards.length ? (
-            filteredCards.map((card) => <ThoughtCardItem key={card.id} card={card} />)
+            filteredCards.map((card) => (
+              <ThoughtCardItem
+                key={card.id}
+                card={card}
+                copied={copiedSource === `card:${card.id}`}
+                onCopy={() => copyText(cardMarkdown(card), `card:${card.id}`)}
+              />
+            ))
           ) : (
             <div className="empty-card">{cards.length ? "当前分类暂无卡片" : "暂无卡片"}</div>
           )}
@@ -1073,7 +1101,9 @@ export function App() {
   );
 }
 
-function ThoughtCardItem({ card }: { card: ThoughtCard }) {
+function ThoughtCardItem({ card, copied, onCopy }: { card: ThoughtCard; copied: boolean; onCopy: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <article className="thought-card">
       <div className="card-head">
@@ -1089,10 +1119,36 @@ function ThoughtCardItem({ card }: { card: ThoughtCard }) {
           ))}
         </div>
       ) : null}
+      {expanded ? (
+        <div className="card-details">
+          <div>
+            <strong>关键点</strong>
+            <div className="detail-list">
+              {card.keyPoints.length ? card.keyPoints.map((point) => <span key={point}>{point}</span>) : <span>暂无关键点</span>}
+            </div>
+          </div>
+          <div>
+            <strong>行动项</strong>
+            <div className="detail-list">
+              {card.actions.length ? card.actions.map((action) => <span key={action}>{action}</span>) : <span>暂无行动项</span>}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="tags">
         {card.tags.map((tag) => (
           <span key={tag}>{tag}</span>
         ))}
+      </div>
+      <div className="card-actions">
+        <button type="button" className={`card-toggle ${expanded ? "expanded" : ""}`} onClick={() => setExpanded((current) => !current)}>
+          <ChevronRight size={16} />
+          {expanded ? "收起" : "展开"}
+        </button>
+        <button type="button" className="copy-button" onClick={onCopy}>
+          {copied ? <Check size={16} /> : <Clipboard size={16} />}
+          {copied ? "已复制" : "复制卡片"}
+        </button>
       </div>
     </article>
   );
