@@ -192,6 +192,19 @@ function daysForMonth(month: string): Array<{ key: string; day: number; offset: 
   }));
 }
 
+function monthOverviewDetail(overview?: MonthDayOverview): string {
+  if (!overview) return "";
+  return [
+    overview.recordings ? `${overview.recordings}录` : "",
+    overview.pending ? `${overview.pending}待` : "",
+    overview.cards ? `${overview.cards}卡` : "",
+    overview.reviewDue ? `${overview.reviewDue}待复` : "",
+    overview.summaryVersion ? `v${overview.summaryVersion}` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function readRawUrlDayParam(): string {
   if (typeof window === "undefined") return "";
   return rawDayParamFromSearch(window.location.search);
@@ -478,6 +491,10 @@ export function App() {
   }, [activeData, activeReviewDueCount, selectedDayOverview]);
   const dayDataLoading = authenticated && Boolean(activeDay) && !activeData;
   const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
+  const visibleMonthContentDays = useMemo(
+    () => monthOverview.filter((item) => item.recordings || item.pending || item.cards || item.reviewDue || item.hasSummary),
+    [monthOverview]
+  );
   const actionItems = useMemo<FocusActionItem[]>(
     () =>
       cards.flatMap((card) =>
@@ -1541,6 +1558,30 @@ export function App() {
             下月
           </button>
         </div>
+        {visibleMonthContentDays.length ? (
+          <div className="month-content-strip" aria-label="本月有内容日期">
+            <span>本月有内容</span>
+            <div>
+              {visibleMonthContentDays.map((overview) => {
+                const isSelected = activeDay === overview.dayKey;
+                const detail = monthOverviewDetail(overview);
+                return (
+                  <button
+                    type="button"
+                    key={overview.dayKey}
+                    className={isSelected ? "active" : ""}
+                    aria-pressed={isSelected}
+                    aria-label={`${overview.dayKey}${detail ? ` ${detail}` : ""}`}
+                    onClick={() => selectDay(overview.dayKey, { scrollToContent: true })}
+                  >
+                    <strong>{Number(overview.dayKey.slice(-2))}日</strong>
+                    <small>{detail || "有内容"}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <div className="calendar-grid calendar-weekdays">
           {["一", "二", "三", "四", "五", "六", "日"].map((label) => (
             <span key={label}>{label}</span>
@@ -1552,15 +1593,7 @@ export function App() {
             const isSelected = activeDay === day.key;
             const isToday = todayDayKey === day.key;
             const hasContent = Boolean(overview?.recordings || overview?.cards || overview?.hasSummary);
-            const detail = [
-              overview?.recordings ? `${overview.recordings}录` : "",
-              overview?.pending ? `${overview.pending}待` : "",
-              overview?.cards ? `${overview.cards}卡` : "",
-              overview?.reviewDue ? `${overview.reviewDue}待复` : "",
-              overview?.summaryVersion ? `v${overview.summaryVersion}` : ""
-            ]
-              .filter(Boolean)
-              .join(" ");
+            const detail = monthOverviewDetail(overview);
             return (
               <button
                 type="button"
