@@ -113,6 +113,13 @@ export interface ThoughtCard {
   updatedAt: string;
 }
 
+export interface CardSearchResult extends ThoughtCard {
+  dayKey: string;
+  weekKey: string;
+  monthKey: string;
+  recordingCreatedAt: string;
+}
+
 export interface CardRelation {
   id: string;
   fromCardId: string;

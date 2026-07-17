@@ -5,6 +5,7 @@ import { dayKey, monthKey, weekKey } from "./time";
 import type {
   AudioAsset,
   CardRelation,
+  CardSearchResult,
   Period,
   ProcessingJob,
   Recording,
@@ -219,6 +220,20 @@ function mapCard(row: Record<string, unknown>): ThoughtCard {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };
+}
+
+function mapCardSearchResult(row: Record<string, unknown>): CardSearchResult {
+  return {
+    ...mapCard(row),
+    dayKey: String(row.day_key),
+    weekKey: String(row.week_key),
+    monthKey: String(row.month_key),
+    recordingCreatedAt: String(row.recording_created_at)
+  };
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
 export function createAudioAsset(handle: DbHandle, input: Omit<AudioAsset, "id" | "createdAt">): AudioAsset {
@@ -779,6 +794,36 @@ export function getCardsForPeriod(handle: DbHandle, period: Period, key: string)
     )
     .all({ key }) as Array<Record<string, unknown>>;
   return rows.map(mapCard);
+}
+
+export function searchCards(handle: DbHandle, query: string, limit = 20): CardSearchResult[] {
+  const normalized = query.trim();
+  if (!normalized) return [];
+
+  const pattern = `%${escapeLike(normalized)}%`;
+  const rows = handle.db
+    .prepare(
+      `SELECT c.*,
+              r.day_key,
+              r.week_key,
+              r.month_key,
+              r.created_at AS recording_created_at
+       FROM thought_cards c
+       JOIN recordings r ON r.id = c.source_recording_id
+       WHERE c.version = 1
+         AND (
+           c.title LIKE @pattern ESCAPE '\\'
+           OR c.summary LIKE @pattern ESCAPE '\\'
+           OR c.key_points_json LIKE @pattern ESCAPE '\\'
+           OR c.actions_json LIKE @pattern ESCAPE '\\'
+           OR c.tags_json LIKE @pattern ESCAPE '\\'
+         )
+       ORDER BY r.created_at DESC, c.created_at DESC
+       LIMIT @limit`
+    )
+    .all({ pattern, limit: Math.max(1, Math.min(limit, 50)) }) as Array<Record<string, unknown>>;
+
+  return rows.map(mapCardSearchResult);
 }
 
 export function getRelationsForCards(handle: DbHandle, cardIds: string[]): Array<{

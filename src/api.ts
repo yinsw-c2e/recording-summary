@@ -12,6 +12,13 @@ export interface ThoughtCard {
   sourceRecordingId: string;
 }
 
+export interface CardSearchResult extends ThoughtCard {
+  dayKey: string;
+  weekKey: string;
+  monthKey: string;
+  recordingCreatedAt: string;
+}
+
 export interface SummaryArtifact {
   id: string;
   period: Period;
@@ -96,6 +103,10 @@ export function getDayDashboard(key: string): Promise<DayDashboardResponse> {
 
 export function getMonthOverview(month: string): Promise<MonthOverviewResponse> {
   return json<MonthOverviewResponse>(`/api/month?month=${encodeURIComponent(month)}`);
+}
+
+export function searchCards(query: string): Promise<{ query: string; results: CardSearchResult[] }> {
+  return json<{ query: string; results: CardSearchResult[] }>(`/api/search?q=${encodeURIComponent(query)}&limit=20`);
 }
 
 export function getAuthStatus(): Promise<{ authRequired: boolean; authenticated: boolean }> {

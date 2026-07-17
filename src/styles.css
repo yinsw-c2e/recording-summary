@@ -223,6 +223,7 @@ button:disabled {
 .transcript-panel,
 .recordings-panel,
 .day-board,
+.search-panel,
 .cards-panel {
   margin-top: 14px;
 }
@@ -298,9 +299,78 @@ button:disabled {
   line-height: 1.4;
 }
 
+.search-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.search-box {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #667085;
+}
+
+.search-box input {
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  outline: 0;
+  color: #1f2937;
+  background: transparent;
+}
+
+.search-results {
+  display: grid;
+  gap: 8px;
+}
+
+.search-result {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  text-align: left;
+}
+
+.search-result span,
+.search-result small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.search-result strong {
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.search-result small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .day-board {
   display: grid;
   gap: 10px;
+}
+
+.day-content-anchor {
+  height: 1px;
+  scroll-margin-top: 12px;
 }
 
 .day-switcher {
@@ -652,6 +722,11 @@ audio {
 
 .empty-card {
   color: #667085;
+}
+
+.empty-card.compact {
+  padding: 10px;
+  font-size: 13px;
 }
 
 @media (min-width: 680px) {

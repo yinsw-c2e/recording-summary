@@ -14,6 +14,7 @@ import {
   Volume2,
   RefreshCw,
   RotateCcw,
+  Search,
   Sparkles,
   Square,
   Waves
@@ -33,8 +34,10 @@ import {
   logout,
   organizeNew,
   regenerateSummary,
+  searchCards,
   uploadRecording,
   type Period,
+  type CardSearchResult,
   type MonthDayOverview,
   type RecordingListItem,
   type SummaryArtifact,
@@ -164,10 +167,14 @@ export function App() {
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
   const [visibleMonth, setVisibleMonth] = useState("");
   const [monthOverview, setMonthOverview] = useState<MonthDayOverview[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<CardSearchResult[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const startedAtRef = useRef(0);
+  const dayContentRef = useRef<HTMLDivElement | null>(null);
 
   const activeData = selectedDayData ?? today;
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
@@ -207,10 +214,28 @@ export function App() {
     setMonthOverview(next.days);
   }
 
-  function selectDay(day: string) {
+  function scrollToDayContent() {
+    window.setTimeout(() => {
+      dayContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
+  function selectDay(day: string, options: { scrollToContent?: boolean } = {}) {
     setSelectedDayKey(day);
     setVisibleMonth(monthFromDay(day));
     setSelectedPeriod("day");
+    if (options.scrollToContent) scrollToDayContent();
+  }
+
+  function navigateDay(delta: number) {
+    selectDay(shiftDayKey(selectedDayKey || todayDayKey, delta), { scrollToContent: true });
+  }
+
+  function jumpToSearchResult(day: string) {
+    selectDay(day);
+    window.setTimeout(() => {
+      document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   useEffect(() => {
@@ -243,6 +268,35 @@ export function App() {
     if (!authenticated || !visibleMonth) return;
     refreshVisibleMonth(visibleMonth).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [authenticated, visibleMonth]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!authenticated || !query) {
+      setSearchResults([]);
+      setSearchBusy(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchBusy(true);
+    const timer = window.setTimeout(() => {
+      searchCards(query)
+        .then((payload) => {
+          if (!cancelled) setSearchResults(payload.results);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => {
+          if (!cancelled) setSearchBusy(false);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [authenticated, searchQuery]);
 
   useEffect(() => {
     if (!selectedSummary) {
@@ -374,6 +428,9 @@ export function App() {
     setSelectedDayKey("");
     setVisibleMonth("");
     setMonthOverview([]);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchBusy(false);
   }
 
   function speakSummary(rate = speechRate) {
@@ -502,18 +559,59 @@ export function App() {
         <small>{today?.sttMode === "remote-worker" ? "手机上传后由 Mac Whisper large-v3 转写" : "本机转写模式"}</small>
       </section>
 
+      <section className="search-panel">
+        <div className="section-title">
+          <Search size={18} />
+          <h2>快速搜索</h2>
+        </div>
+        <label className="search-box">
+          <Search size={16} />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="搜索历史想法、任务、知识"
+          />
+          {searchBusy ? <Loader2 className="spin" size={15} /> : null}
+        </label>
+        {searchQuery.trim() ? (
+          <div className="search-results">
+            {searchResults.length ? (
+              searchResults.map((result) => (
+                <button
+                  type="button"
+                  className="search-result"
+                  key={result.id}
+                  onClick={() => jumpToSearchResult(result.dayKey)}
+                >
+                  <span>
+                    {result.dayKey} · {typeLabels[result.type] ?? result.type}
+                  </span>
+                  <strong>{result.title}</strong>
+                  <small>{result.summary}</small>
+                </button>
+              ))
+            ) : searchBusy ? (
+              <div className="empty-card compact">搜索中</div>
+            ) : (
+              <div className="empty-card compact">没有找到匹配卡片</div>
+            )}
+          </div>
+        ) : null}
+      </section>
+
       <section className="day-board">
         <div className="section-title">
           <CalendarDays size={18} />
           <h2>日期看板</h2>
         </div>
         <div className="day-switcher" aria-label="日期切换">
-          <button type="button" aria-label="上一天" onClick={() => selectDay(shiftDayKey(selectedDayKey || todayDayKey, -1))}>
+          <button type="button" aria-label="上一天" onClick={() => navigateDay(-1)}>
             <ChevronLeft size={17} />
             <span>上一天</span>
           </button>
           <strong>{selectedDayKey || todayDayKey}</strong>
-          <button type="button" aria-label="下一天" onClick={() => selectDay(shiftDayKey(selectedDayKey || todayDayKey, 1))}>
+          <button type="button" aria-label="下一天" onClick={() => navigateDay(1)}>
             <span>下一天</span>
             <ChevronRight size={17} />
           </button>
@@ -555,7 +653,7 @@ export function App() {
                 aria-pressed={isSelected}
                 className={`calendar-day ${hasContent ? "has-content" : ""} ${isSelected ? "active" : ""} ${isToday ? "today" : ""}`}
                 style={day.offset ? { gridColumnStart: day.offset + 1 } : undefined}
-                onClick={() => selectDay(day.key)}
+                onClick={() => selectDay(day.key, { scrollToContent: true })}
               >
                 <span>{day.day}</span>
                 <small>{detail}</small>
@@ -564,6 +662,8 @@ export function App() {
           })}
         </div>
       </section>
+
+      <div className="day-content-anchor" ref={dayContentRef} aria-hidden="true" />
 
       <section className="recordings-panel">
         <div className="section-title">

@@ -27,6 +27,7 @@ import {
   listSummaries,
   markTranscriptionJobTranscribing,
   openDb,
+  searchCards,
   upsertWorkerHeartbeat,
   upsertTranscript,
   type DbHandle
@@ -369,6 +370,14 @@ export function buildServer(handle: DbHandle = openDb()) {
     const month = String((request.query as { month?: string }).month ?? monthKey(new Date()));
     if (!isMonthKey(month)) return reply.code(400).send({ error: "month must be YYYY-MM" });
     return { month, days: listMonthOverview(handle, month) };
+  });
+
+  app.get("/api/search", async (request, reply) => {
+    const query = String((request.query as { q?: string }).q ?? "").trim();
+    const limit = Number((request.query as { limit?: string }).limit ?? 20);
+    if (!query) return { query, results: [] };
+    if (query.length > 80) return reply.code(400).send({ error: "q is too long" });
+    return { query, results: searchCards(handle, query, Number.isFinite(limit) ? limit : 20) };
   });
 
   app.post("/api/process/organize-new", async () => organizeNew(handle, llm));

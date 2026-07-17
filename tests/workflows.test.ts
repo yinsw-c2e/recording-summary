@@ -468,6 +468,84 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("searches historical cards and returns their day keys", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const { openDb, createAudioAsset, createRecording, insertCard, searchCards } = await import("../server/db");
+
+    const handle = openDb();
+
+    const asset1 = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "search-r1",
+      path: "raw_audio/search-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "search-r1",
+      audioPath: "raw_audio/search-r1.webm",
+      audioAssetId: asset1.id,
+      duration: 12,
+      mimeType: "audio/webm"
+    });
+    handle.db
+      .prepare("UPDATE recordings SET created_at = ?, day_key = ?, week_key = ?, month_key = ?, status = ? WHERE id = ?")
+      .run("2026-07-03T02:00:00.000Z", "2026-07-03", "2026-W27", "2026-07", "organized", "search-r1");
+    insertCard(handle, {
+      type: "knowledge",
+      title: "咖啡萃取参数",
+      summary: "记录手冲咖啡水温和研磨度的复盘方法",
+      keyPoints: ["水温", "研磨度"],
+      actions: [],
+      tags: ["咖啡复盘"],
+      sourceRecordingId: "search-r1",
+      sourceTextRange: "segment-1",
+      confidence: 0.9,
+      version: 1,
+      rawJson: {}
+    });
+
+    const asset2 = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "search-r2",
+      path: "raw_audio/search-r2.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "search-r2",
+      audioPath: "raw_audio/search-r2.webm",
+      audioAssetId: asset2.id,
+      duration: 8,
+      mimeType: "audio/webm"
+    });
+    handle.db
+      .prepare("UPDATE recordings SET created_at = ?, day_key = ?, week_key = ?, month_key = ?, status = ? WHERE id = ?")
+      .run("2026-07-04T02:00:00.000Z", "2026-07-04", "2026-W27", "2026-07", "organized", "search-r2");
+    insertCard(handle, {
+      type: "task",
+      title: "采购清单",
+      summary: "整理明天要买的水果和纸巾",
+      keyPoints: ["水果", "纸巾"],
+      actions: ["买水果"],
+      tags: ["生活"],
+      sourceRecordingId: "search-r2",
+      sourceTextRange: "segment-1",
+      confidence: 0.9,
+      version: 1,
+      rawJson: {}
+    });
+
+    const results = searchCards(handle, "咖啡");
+    expect(results).toHaveLength(1);
+    expect(results[0]?.title).toBe("咖啡萃取参数");
+    expect(results[0]?.dayKey).toBe("2026-07-03");
+    expect(results[0]?.recordingCreatedAt).toBe("2026-07-03T02:00:00.000Z");
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("claims a remote transcription job once and completes it into cards", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });
