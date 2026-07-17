@@ -76,6 +76,20 @@ export interface CardEditResult {
   summaries: Partial<Record<Period, SummaryArtifact>>;
 }
 
+export interface CardDeleteResult {
+  deleted: {
+    cardId: string;
+    recordingId: string;
+    cardsDeleted: number;
+    relationsDeleted: number;
+    summariesDeleted: number;
+    filesDeleted: number;
+    remainingRecordingCards: number;
+  };
+  summaries: Partial<Record<Period, SummaryArtifact>>;
+  summaryErrors: Array<{ period: Period; message: string }>;
+}
+
 export interface WorkerSnapshot {
   queue: Record<string, number>;
   workers: Array<{
@@ -186,6 +200,10 @@ export function updateThoughtCard(cardId: string, input: CardEditInput): Promise
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input)
   });
+}
+
+export function deleteThoughtCard(cardId: string): Promise<CardDeleteResult> {
+  return json(`/api/cards/${cardId}`, { method: "DELETE" });
 }
 
 export function saveTranscriptAndOrganize(recordingId: string, text: string): Promise<ManualTranscriptOrganizeResult> {

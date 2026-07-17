@@ -1284,6 +1284,12 @@ audio {
   transform: rotate(90deg);
 }
 
+.card-toggle.danger {
+  border-color: #fecaca;
+  color: #b42318;
+  background: #fffafa;
+}
+
 .card-editing {
   border-color: #cbd5e1;
   background: #fbfcfe;

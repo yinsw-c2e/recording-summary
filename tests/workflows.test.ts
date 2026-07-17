@@ -301,6 +301,99 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("deletes one card and refreshes affected summaries without removing the source recording", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const [
+      { openDb, createAudioAsset, createRecording, upsertTranscript, getCardsForPeriod, getLatestSummary, getRecording },
+      { MockLLMProvider },
+      workflows,
+      { dayKey }
+    ] = await Promise.all([
+      import("../server/db"),
+      import("../server/providers/mockLlm"),
+      import("../server/workflows"),
+      import("../server/time")
+    ]);
+
+    const handle = openDb();
+    const llm = new MockLLMProvider();
+    const tts = { synthesize: async () => null };
+    for (const id of ["delete-card-r1", "delete-card-r2"]) {
+      const asset = createAudioAsset(handle, {
+        kind: "recording",
+        ownerId: id,
+        path: `raw_audio/${id}.webm`,
+        mimeType: "audio/webm"
+      });
+      createRecording(handle, {
+        id,
+        audioPath: `raw_audio/${id}.webm`,
+        audioAssetId: asset.id,
+        duration: 10,
+        mimeType: "audio/webm"
+      });
+    }
+    upsertTranscript(handle, {
+      recordingId: "delete-card-r1",
+      rawText: "我要删除这张错误卡片，它不应该继续进入总结。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/delete-card-r1.txt"
+    });
+    upsertTranscript(handle, {
+      recordingId: "delete-card-r2",
+      rawText: "保留这张手机端项目卡片，它应该继续留在总结里。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/delete-card-r2.txt"
+    });
+
+    await workflows.organizeNew(handle, llm);
+    const today = dayKey(new Date());
+    await workflows.regenerateStableSummary(handle, tts, "day", today);
+    const cardsBeforeDelete = getCardsForPeriod(handle, "day", today);
+    const deletedCard = cardsBeforeDelete.find((card) => card.sourceRecordingId === "delete-card-r1");
+    const remainingCard = cardsBeforeDelete.find((card) => card.sourceRecordingId === "delete-card-r2");
+    expect(deletedCard).toBeDefined();
+    expect(remainingCard).toBeDefined();
+
+    const result = await workflows.deleteThoughtCardAndRefreshSummaries(handle, tts, deletedCard!.id);
+
+    expect(result?.deleted.cardsDeleted).toBe(1);
+    expect(result?.deleted.remainingRecordingCards).toBe(0);
+    expect(result?.summaryErrors).toEqual([]);
+    expect(getRecording(handle, deletedCard!.sourceRecordingId)?.status).toBe("no_content");
+    const remainingCards = getCardsForPeriod(handle, "day", today);
+    expect(remainingCards).toHaveLength(1);
+    expect(remainingCards[0]?.id).toBe(remainingCard!.id);
+
+    const brokenRelations = (
+      handle.db
+        .prepare(
+          `SELECT count(*) AS n
+           FROM card_relations r
+           LEFT JOIN thought_cards f ON f.id = r.from_card_id
+           LEFT JOIN thought_cards t ON t.id = r.to_card_id
+           WHERE f.id IS NULL OR t.id IS NULL`
+        )
+        .get() as { n: number }
+    ).n;
+    expect(brokenRelations).toBe(0);
+
+    const latestDay = getLatestSummary(handle, "day", today);
+    expect(latestDay).not.toBeNull();
+    const markdown = await fs.readFile(path.join(dataDir, latestDay!.markdownPath), "utf8");
+    expect(markdown).not.toContain(deletedCard!.title);
+    expect(markdown).toContain(remainingCard!.title);
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("deletes a failed recording without rebuilding summaries it never affected", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });

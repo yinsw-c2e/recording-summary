@@ -44,6 +44,7 @@ import {
   completeRemoteTranscription,
   deepReorganize,
   deleteRecordingAndRefreshSummaries,
+  deleteThoughtCardAndRefreshSummaries,
   organizeNew,
   regenerateStableSummary,
   regenerateSummary,
@@ -283,6 +284,13 @@ export function buildServer(handle: DbHandle = openDb()) {
       }
       throw error;
     }
+  });
+
+  app.delete("/api/cards/:id", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    const result = await deleteThoughtCardAndRefreshSummaries(handle, tts, id);
+    if (!result) return reply.code(404).send({ error: "card not found" });
+    return result;
   });
 
   app.post("/api/recordings/:id/transcript/organize", async (request, reply) => {

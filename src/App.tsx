@@ -35,6 +35,7 @@ import {
   audioUrl,
   deepReorganize,
   deleteRecording,
+  deleteThoughtCard,
   finishLatest,
   getAuthStatus,
   getDayDashboard,
@@ -829,6 +830,16 @@ export function App() {
         tags: textToTags(cardDraft.tags)
       });
       setEditingCardId("");
+    });
+  }
+
+  async function removeCard(card: ThoughtCard) {
+    const confirmed = window.confirm("确定删除这张卡片？原始录音和转写会保留，只会移除这张卡片并刷新受影响总结。");
+    if (!confirmed) return;
+
+    await runAction("card-delete", async () => {
+      await deleteThoughtCard(card.id);
+      if (editingCardId === card.id) setEditingCardId("");
     });
   }
 
@@ -1652,6 +1663,7 @@ export function App() {
                 onDraftChange={setCardDraft}
                 onCancelEdit={() => setEditingCardId("")}
                 onSaveEdit={() => saveCardEdit(card)}
+                onDelete={() => removeCard(card)}
               />
             ))
           ) : (
@@ -1673,7 +1685,8 @@ function ThoughtCardItem({
   onStartEdit,
   onDraftChange,
   onCancelEdit,
-  onSaveEdit
+  onSaveEdit,
+  onDelete
 }: {
   card: ThoughtCard;
   copied: boolean;
@@ -1685,6 +1698,7 @@ function ThoughtCardItem({
   onDraftChange: (draft: CardDraft) => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
+  onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const updateDraft = (patch: Partial<CardDraft>) => onDraftChange({ ...draft, ...patch });
@@ -1785,6 +1799,10 @@ function ThoughtCardItem({
         <button type="button" className="card-toggle" disabled={busy !== null} onClick={onStartEdit}>
           <Pencil size={16} />
           编辑
+        </button>
+        <button type="button" className="card-toggle danger" disabled={busy !== null} onClick={onDelete}>
+          {busy === "card-delete" ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+          删除
         </button>
         <button type="button" className="copy-button" onClick={onCopy}>
           {copied ? <Check size={16} /> : <Clipboard size={16} />}

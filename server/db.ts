@@ -34,6 +34,19 @@ export interface DeletedRecordingCascade {
   summaryAudioAssetsDeleted: number;
 }
 
+export interface DeletedCardCascade {
+  cardId: string;
+  recordingId: string;
+  periodKeys: Record<Period, string>;
+  filesToRemove: string[];
+  summaryPeriodsToRefresh: Period[];
+  relationsDeleted: number;
+  cardsDeleted: number;
+  summariesDeleted: number;
+  summaryAudioAssetsDeleted: number;
+  remainingRecordingCards: number;
+}
+
 export function openDb(dbPath = dataPaths.db): DbHandle {
   ensureDataDirs();
   const db = new Database(dbPath);
@@ -684,6 +697,98 @@ export function deleteRecordingCascade(handle: DbHandle, id: string): DeletedRec
   });
 
   return transaction(id) as DeletedRecordingCascade | null;
+}
+
+export function deleteCardCascade(handle: DbHandle, id: string): DeletedCardCascade | null {
+  const transaction = handle.db.transaction((cardId: string) => {
+    const card = handle.db
+      .prepare(
+        `SELECT c.*, r.day_key, r.week_key, r.month_key
+         FROM thought_cards c
+         JOIN recordings r ON r.id = c.source_recording_id
+         WHERE c.id = ?`
+      )
+      .get(cardId) as Record<string, unknown> | undefined;
+    if (!card) return null;
+
+    const recordingId = String(card.source_recording_id);
+    const periodKeys: Record<Period, string> = {
+      day: String(card.day_key),
+      week: String(card.week_key),
+      month: String(card.month_key)
+    };
+    const files = new Set<string>();
+    const addFile = (value: unknown) => {
+      if (typeof value === "string" && value.trim()) files.add(value);
+    };
+
+    const summaryRows = handle.db
+      .prepare(
+        `SELECT s.id, s.period, s.markdown_path, s.audio_asset_id, a.path AS audio_path
+         FROM summary_artifacts s
+         LEFT JOIN audio_assets a ON a.id = s.audio_asset_id
+         WHERE (s.period = 'day' AND s.period_key = @day)
+            OR (s.period = 'week' AND s.period_key = @week)
+            OR (s.period = 'month' AND s.period_key = @month)`
+      )
+      .all(periodKeys) as Array<Record<string, unknown>>;
+    const summaryPeriodsToRefresh = [
+      ...new Set(
+        summaryRows
+          .map((row) => String(row.period))
+          .filter((period): period is Period => period === "day" || period === "week" || period === "month")
+      )
+    ];
+    summaryRows.forEach((row) => {
+      addFile(row.markdown_path);
+      addFile(row.audio_path);
+    });
+
+    const relationsDeleted = handle.db
+      .prepare("DELETE FROM card_relations WHERE from_card_id = ? OR to_card_id = ?")
+      .run(cardId, cardId).changes;
+    const cardsDeleted = handle.db.prepare("DELETE FROM thought_cards WHERE id = ?").run(cardId).changes;
+    const remainingRecordingCards = Number(
+      (handle.db.prepare("SELECT count(*) AS n FROM thought_cards WHERE source_recording_id = ?").get(recordingId) as { n: number }).n
+    );
+    updateRecordingStatus(handle, recordingId, remainingRecordingCards ? "organized" : "no_content");
+
+    const summariesDeleted = summaryRows.length
+      ? handle.db
+          .prepare(
+            `DELETE FROM summary_artifacts
+             WHERE (period = 'day' AND period_key = @day)
+                OR (period = 'week' AND period_key = @week)
+                OR (period = 'month' AND period_key = @month)`
+          )
+          .run(periodKeys).changes
+      : 0;
+
+    const summaryAudioAssetIds = summaryRows
+      .map((row) => row.audio_asset_id)
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+    let summaryAudioAssetsDeleted = 0;
+    if (summaryAudioAssetIds.length) {
+      summaryAudioAssetsDeleted = handle.db
+        .prepare(`DELETE FROM audio_assets WHERE id IN (${placeholders(summaryAudioAssetIds)})`)
+        .run(...summaryAudioAssetIds).changes;
+    }
+
+    return {
+      cardId,
+      recordingId,
+      periodKeys,
+      filesToRemove: [...files],
+      summaryPeriodsToRefresh,
+      relationsDeleted,
+      cardsDeleted,
+      summariesDeleted,
+      summaryAudioAssetsDeleted,
+      remainingRecordingCards
+    };
+  });
+
+  return transaction(id) as DeletedCardCascade | null;
 }
 
 export function upsertTranscript(

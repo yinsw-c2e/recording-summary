@@ -4,6 +4,7 @@ import path from "node:path";
 import { nanoid } from "nanoid";
 import {
   createAudioAsset,
+  deleteCardCascade,
   createJob,
   deleteRecordingCascade,
   finishJob,
@@ -499,6 +500,57 @@ export async function updateThoughtCardAndRefreshSummaries(
   }
 
   return { card, summaries };
+}
+
+export async function deleteThoughtCardAndRefreshSummaries(
+  handle: DbHandle,
+  tts: TTSProvider,
+  cardId: string
+): Promise<{
+  deleted: {
+    cardId: string;
+    recordingId: string;
+    cardsDeleted: number;
+    relationsDeleted: number;
+    summariesDeleted: number;
+    filesDeleted: number;
+    remainingRecordingCards: number;
+  };
+  summaries: Partial<Record<Period, SummaryArtifact>>;
+  summaryErrors: Array<{ period: Period; message: string }>;
+} | null> {
+  const deleted = deleteCardCascade(handle, cardId);
+  if (!deleted) return null;
+
+  await removeStoredFiles(deleted.filesToRemove);
+  await removeCardMarkdownFiles([deleted.cardId]);
+
+  const summaries: Partial<Record<Period, SummaryArtifact>> = {};
+  const summaryErrors: Array<{ period: Period; message: string }> = [];
+  for (const period of deleted.summaryPeriodsToRefresh) {
+    try {
+      summaries[period] = await regenerateStableSummary(handle, tts, period, deleted.periodKeys[period]);
+    } catch (error) {
+      summaryErrors.push({
+        period,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  return {
+    deleted: {
+      cardId: deleted.cardId,
+      recordingId: deleted.recordingId,
+      cardsDeleted: deleted.cardsDeleted,
+      relationsDeleted: deleted.relationsDeleted,
+      summariesDeleted: deleted.summariesDeleted,
+      filesDeleted: deleted.filesToRemove.length + 1,
+      remainingRecordingCards: deleted.remainingRecordingCards
+    },
+    summaries,
+    summaryErrors
+  };
 }
 
 export async function regenerateStableSummary(handle: DbHandle, tts: TTSProvider, period: Period, periodKey: string): Promise<SummaryArtifact> {
