@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Clipboard,
   Trash2,
   FileAudio,
   ListChecks,
@@ -64,6 +65,7 @@ const typeLabels: Record<string, string> = {
 };
 
 type SpeechSource = "summary" | "focus";
+type CopySource = "focus" | "summary";
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const recordingMimeCandidates = [
@@ -150,6 +152,10 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+function markdownList(items: string[], emptyText: string): string[] {
+  return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
+}
+
 export function App() {
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [recording, setRecording] = useState(false);
@@ -166,6 +172,7 @@ export function App() {
   const [password, setPassword] = useState("");
   const [speechSource, setSpeechSource] = useState<SpeechSource | null>(null);
   const [speechRate, setSpeechRate] = useState(1.5);
+  const [copiedSource, setCopiedSource] = useState<CopySource | null>(null);
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
   const [selectedDayKey, setSelectedDayKey] = useState("");
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
@@ -244,6 +251,35 @@ export function App() {
       });
       if (cards.length > 6) lines.push(`还有 ${cards.length - 6} 张卡片。`);
     }
+    return lines.join("\n");
+  }, [actionItems, cards, reviewCards, selectedDayKey, todayDayKey]);
+  const focusExportMarkdown = useMemo(() => {
+    if (!cards.length) return "";
+    const day = selectedDayKey || todayDayKey;
+    const lines = [
+      `# ${day} 重点`,
+      "",
+      `- 卡片：${cards.length}`,
+      `- 行动项：${actionItems.length}`,
+      `- 待确认：${reviewCards.length}`,
+      "",
+      "## 行动项",
+      ...markdownList(
+        actionItems.map((item) => `[ ] ${item.action}（${typeLabels[item.type] ?? item.type}：${item.title}）`),
+        "暂无明确行动项"
+      )
+    ];
+
+    if (reviewCards.length) {
+      lines.push("", "## 待确认", ...reviewCards.map((card) => `- ${card.title}：${card.summary}`));
+    }
+
+    lines.push(
+      "",
+      "## 卡片",
+      ...cards.map((card) => `- ${typeLabels[card.type] ?? card.type}｜${card.title}：${card.summary}`)
+    );
+
     return lines.join("\n");
   }, [actionItems, cards, reviewCards, selectedDayKey, todayDayKey]);
 
@@ -494,6 +530,34 @@ export function App() {
     setSearchResults([]);
     setSearchBusy(false);
     setCardTypeFilter("all");
+    setCopiedSource(null);
+  }
+
+  async function copyText(text: string, source: CopySource) {
+    if (!text.trim()) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!copied) throw new Error("copy command failed");
+      }
+      setCopiedSource(source);
+      window.setTimeout(() => {
+        setCopiedSource((current) => (current === source ? null : current));
+      }, 1600);
+    } catch {
+      setError("当前浏览器不允许直接复制，请手动选中文字复制。");
+    }
   }
 
   function speakText(text: string, source: SpeechSource, rate = speechRate) {
@@ -767,15 +831,26 @@ export function App() {
             <small>待确认</small>
           </div>
         </div>
-        <button
-          className="focus-speech"
-          type="button"
-          disabled={!focusListeningScript || !("speechSynthesis" in window)}
-          onClick={speechSource === "focus" ? stopSpeaking : () => speakFocus()}
-        >
-          <Volume2 size={16} />
-          {speechSource === "focus" ? "停止朗读" : `朗读重点 ${speechRate}x`}
-        </button>
+        <div className="focus-actions">
+          <button
+            className="focus-speech"
+            type="button"
+            disabled={!focusListeningScript || !("speechSynthesis" in window)}
+            onClick={speechSource === "focus" ? stopSpeaking : () => speakFocus()}
+          >
+            <Volume2 size={16} />
+            {speechSource === "focus" ? "停止朗读" : `朗读重点 ${speechRate}x`}
+          </button>
+          <button
+            className="copy-button"
+            type="button"
+            disabled={!focusExportMarkdown}
+            onClick={() => copyText(focusExportMarkdown, "focus")}
+          >
+            {copiedSource === "focus" ? <Check size={16} /> : <Clipboard size={16} />}
+            {copiedSource === "focus" ? "已复制" : "复制重点"}
+          </button>
+        </div>
         <div className="focus-block">
           <strong>行动项</strong>
           {actionItems.length ? (
@@ -901,6 +976,15 @@ export function App() {
             >
               <Volume2 size={16} />
               {speechSource === "summary" ? "停止朗读" : `朗读总结 ${speechRate}x`}
+            </button>
+            <button
+              className="copy-button"
+              type="button"
+              disabled={!summaryMarkdown.trim()}
+              onClick={() => copyText(summaryMarkdown, "summary")}
+            >
+              {copiedSource === "summary" ? <Check size={16} /> : <Clipboard size={16} />}
+              {copiedSource === "summary" ? "已复制" : "复制总结"}
             </button>
           </div>
           <pre className="summary-markdown">{summaryMarkdown || "暂无总结内容"}</pre>
