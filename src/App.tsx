@@ -77,6 +77,14 @@ import {
   type RecordingFilter
 } from "./recordingFilters";
 import {
+  findAdjacentContentDay,
+  matchesMonthContentFilter,
+  monthContentFilterLabels,
+  monthOverviewDetail,
+  monthOverviewHasContent,
+  type MonthContentFilter
+} from "./monthContent";
+import {
   buildDayArchiveMarkdown,
   buildFocusExportMarkdown,
   buildFocusListeningScript,
@@ -119,7 +127,6 @@ type SpeechSource = "summary" | "focus" | "review_due";
 type CopySource = "focus" | "summary" | "day-archive" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type WakeLockState = "idle" | "active" | "released" | "unsupported" | "failed";
-type MonthContentFilter = "all" | "pending" | "review_due" | "summary";
 type CardDraft = {
   type: string;
   title: string;
@@ -140,12 +147,6 @@ type NavigatorWithWakeLock = Navigator & {
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const completedActionsStorageKey = "recording-summary.completed-actions.v1";
-const monthContentFilterLabels: Record<MonthContentFilter, string> = {
-  all: "全部",
-  pending: "待处理",
-  review_due: "待复习",
-  summary: "有总结"
-};
 const recordingMimeCandidates = [
   "audio/mp4;codecs=mp4a.40.2",
   "audio/mp4",
@@ -197,26 +198,6 @@ function daysForMonth(month: string): Array<{ key: string; day: number; offset: 
     day: index + 1,
     offset: index === 0 ? offset : 0
   }));
-}
-
-function monthOverviewDetail(overview?: MonthDayOverview): string {
-  if (!overview) return "";
-  return [
-    overview.recordings ? `${overview.recordings}录` : "",
-    overview.pending ? `${overview.pending}待` : "",
-    overview.cards ? `${overview.cards}卡` : "",
-    overview.reviewDue ? `${overview.reviewDue}待复` : "",
-    overview.summaryVersion ? `v${overview.summaryVersion}` : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function matchesMonthContentFilter(overview: MonthDayOverview, filter: MonthContentFilter): boolean {
-  if (filter === "pending") return overview.pending > 0;
-  if (filter === "review_due") return overview.reviewDue > 0;
-  if (filter === "summary") return overview.hasSummary;
-  return true;
 }
 
 function readRawUrlDayParam(): string {
@@ -506,10 +487,7 @@ export function App() {
   }, [activeData, activeReviewDueCount, selectedDayOverview]);
   const dayDataLoading = authenticated && Boolean(activeDay) && !activeData;
   const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
-  const visibleMonthContentDays = useMemo(
-    () => monthOverview.filter((item) => item.recordings || item.pending || item.cards || item.reviewDue || item.hasSummary),
-    [monthOverview]
-  );
+  const visibleMonthContentDays = useMemo(() => monthOverview.filter(monthOverviewHasContent), [monthOverview]);
   const monthContentFilterCounts = useMemo(
     () =>
       ({
@@ -523,6 +501,14 @@ export function App() {
   const filteredMonthContentDays = useMemo(
     () => visibleMonthContentDays.filter((item) => matchesMonthContentFilter(item, monthContentFilter)),
     [monthContentFilter, visibleMonthContentDays]
+  );
+  const previousContentDay = useMemo(
+    () => findAdjacentContentDay(visibleMonthContentDays, activeDay, "previous"),
+    [activeDay, visibleMonthContentDays]
+  );
+  const nextContentDay = useMemo(
+    () => findAdjacentContentDay(visibleMonthContentDays, activeDay, "next", todayDayKey),
+    [activeDay, todayDayKey, visibleMonthContentDays]
   );
   const actionItems = useMemo<FocusActionItem[]>(
     () =>
@@ -1560,6 +1546,30 @@ export function App() {
             回到今天
           </button>
         </div>
+        {visibleMonthContentDays.length ? (
+          <div className="content-jump-strip" aria-label="本月有内容日期快捷跳转">
+            <button
+              type="button"
+              disabled={!previousContentDay}
+              aria-label={previousContentDay ? `跳到上个有内容日期 ${previousContentDay.dayKey}` : "本月没有更早的有内容日期"}
+              onClick={() => previousContentDay && selectDay(previousContentDay.dayKey, { scrollToContent: true })}
+            >
+              <ChevronLeft size={15} />
+              <span>上个有内容</span>
+              <small>{previousContentDay ? `${Number(previousContentDay.dayKey.slice(-2))}日` : "本月无"}</small>
+            </button>
+            <button
+              type="button"
+              disabled={!nextContentDay}
+              aria-label={nextContentDay ? `跳到下个有内容日期 ${nextContentDay.dayKey}` : "本月没有更晚的有内容日期"}
+              onClick={() => nextContentDay && selectDay(nextContentDay.dayKey, { scrollToContent: true })}
+            >
+              <span>下个有内容</span>
+              <small>{nextContentDay ? `${Number(nextContentDay.dayKey.slice(-2))}日` : "本月无"}</small>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        ) : null}
         <div className="day-overview" aria-label="所选日期概览">
           <span>
             <strong>{selectedDaySnapshot.recordings}</strong>
