@@ -22,6 +22,13 @@ import {
   Waves
 } from "lucide-react";
 import {
+  actionItemFilters,
+  countActionItemFilters,
+  matchesActionItemFilter,
+  orderActionItems,
+  type ActionItemFilter
+} from "./actionItems";
+import {
   attachTranscript,
   audioUrl,
   deepReorganize,
@@ -75,6 +82,12 @@ type SpeechSource = "summary" | "focus";
 type CopySource = "focus" | "summary" | `card:${string}`;
 type CompletedActions = Record<string, true>;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
+type FocusActionItem = {
+  id: string;
+  action: string;
+  title: string;
+  type: string;
+};
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const completedActionsStorageKey = "recording-summary.completed-actions.v1";
@@ -250,6 +263,7 @@ export function App() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [cardTypeFilter, setCardTypeFilter] = useState("all");
   const [recordingFilter, setRecordingFilter] = useState<RecordingFilter>("all");
+  const [actionFilter, setActionFilter] = useState<ActionItemFilter>("open");
   const [completedActions, setCompletedActions] = useState<CompletedActions>(() => readCompletedActions());
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -284,7 +298,7 @@ export function App() {
   }, [activeData, selectedDayOverview]);
   const dayDataLoading = authenticated && Boolean(activeDay) && !activeData;
   const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
-  const actionItems = useMemo(
+  const actionItems = useMemo<FocusActionItem[]>(
     () =>
       cards.flatMap((card) =>
         card.actions.map((action, index) => ({
@@ -320,6 +334,12 @@ export function App() {
   const completedActionCount = useMemo(
     () => actionItems.filter((item) => completedActions[item.id]).length,
     [actionItems, completedActions]
+  );
+  const orderedActionItems = useMemo(() => orderActionItems(actionItems, completedActions), [actionItems, completedActions]);
+  const actionFilterCounts = useMemo(() => countActionItemFilters(actionItems, completedActions), [actionItems, completedActions]);
+  const visibleActionItems = useMemo(
+    () => orderedActionItems.filter((item) => matchesActionItemFilter(item, completedActions, actionFilter)),
+    [actionFilter, completedActions, orderedActionItems]
   );
   const focusListeningScript = useMemo(() => {
     if (!cards.length) return "";
@@ -422,6 +442,7 @@ export function App() {
     setSelectedPeriod("day");
     setCardTypeFilter("all");
     setRecordingFilter("all");
+    setActionFilter("open");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -654,6 +675,7 @@ export function App() {
     setSearchResults([]);
     setSearchBusy(false);
     setCardTypeFilter("all");
+    setActionFilter("open");
     setCopiedSource(null);
   }
 
@@ -1054,10 +1076,27 @@ export function App() {
           </button>
         </div>
         <div className="focus-block">
-          <strong>行动项</strong>
+          <div className="focus-block-head">
+            <strong>行动项</strong>
+            {actionItems.length ? (
+              <div className="action-filter" aria-label="行动项筛选">
+                {actionItemFilters.map((filter) => (
+                  <button
+                    type="button"
+                    key={filter.key}
+                    className={actionFilter === filter.key ? "active" : ""}
+                    aria-pressed={actionFilter === filter.key}
+                    onClick={() => setActionFilter(filter.key)}
+                  >
+                    {filter.label} {actionFilterCounts[filter.key]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {actionItems.length ? (
             <div className="action-list">
-              {actionItems.slice(0, 6).map((item) => (
+              {visibleActionItems.slice(0, 6).map((item) => (
                 <label key={item.id} className={`action-item ${completedActions[item.id] ? "done" : ""}`}>
                   <input
                     type="checkbox"
@@ -1070,7 +1109,10 @@ export function App() {
                   </small>
                 </label>
               ))}
-              {actionItems.length > 6 ? <small className="more-count">还有 {actionItems.length - 6} 个行动项</small> : null}
+              {visibleActionItems.length > 6 ? <small className="more-count">还有 {visibleActionItems.length - 6} 个行动项</small> : null}
+              {!visibleActionItems.length ? (
+                <div className="empty-card compact">{actionFilter === "done" ? "暂无已完成行动项" : "没有未完成行动项"}</div>
+              ) : null}
             </div>
           ) : (
             <div className="empty-card compact">暂无明确行动项</div>

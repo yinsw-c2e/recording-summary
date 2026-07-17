@@ -482,9 +482,43 @@ button:disabled {
   gap: 8px;
 }
 
-.focus-block > strong {
+.focus-block-head {
+  display: grid;
+  gap: 8px;
+}
+
+.focus-block-head > strong {
   color: #263244;
   font-size: 14px;
+}
+
+.action-filter {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.action-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.action-filter button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.action-filter button.active {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
 }
 
 .action-list {
