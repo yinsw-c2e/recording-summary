@@ -640,4 +640,108 @@ describe("organizing workflow", () => {
     handle.db.close();
     await fs.rm(dataDir, { recursive: true, force: true });
   });
+
+  it("requeues a failed remote transcription without keeping stale transcript pending", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const {
+      openDb,
+      createAudioAsset,
+      createRecording,
+      createTranscriptionJob,
+      claimNextTranscriptionJob,
+      failTranscriptionJob,
+      getTranscriptionJob,
+      getRecording,
+      requeueTranscriptionJob,
+      upsertTranscript
+    } = await import("../server/db");
+
+    const handle = openDb();
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "retry-r1",
+      path: "raw_audio/retry-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "retry-r1",
+      audioPath: "raw_audio/retry-r1.webm",
+      audioAssetId: asset.id,
+      duration: 11,
+      mimeType: "audio/webm"
+    });
+    upsertTranscript(handle, {
+      recordingId: "retry-r1",
+      rawText: "旧的错误转写",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/retry-r1.txt"
+    });
+    const job = createTranscriptionJob(handle, "retry-r1");
+    claimNextTranscriptionJob(handle, "mac-1");
+    failTranscriptionJob(handle, job.id, "whisper failed", 1);
+
+    expect(getTranscriptionJob(handle, job.id)?.status).toBe("failed");
+    expect(getRecording(handle, "retry-r1")?.status).toBe("failed");
+
+    const result = requeueTranscriptionJob(handle, "retry-r1");
+    expect(result).not.toBeNull();
+    expect(result).not.toBe("has_cards");
+    if (result && result !== "has_cards") {
+      expect(result.job.id).toBe(job.id);
+      expect(result.job.status).toBe("pending");
+      expect(result.job.attempts).toBe(0);
+      expect(result.recording.status).toBe("transcription_queued");
+    }
+    expect(getRecording(handle, "retry-r1")?.error).toBeNull();
+    const transcriptStatus = (handle.db
+      .prepare("SELECT status FROM transcripts WHERE recording_id = ?")
+      .get("retry-r1") as { status: string }).status;
+    expect(transcriptStatus).toBe("failed");
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("does not requeue recordings that already produced cards", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const { openDb, createAudioAsset, createRecording, requeueTranscriptionJob, upsertTranscript, countAll } = await import("../server/db");
+    const { MockLLMProvider } = await import("../server/providers/mockLlm");
+    const workflows = await import("../server/workflows");
+
+    const handle = openDb();
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "retry-card-r1",
+      path: "raw_audio/retry-card-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "retry-card-r1",
+      audioPath: "raw_audio/retry-card-r1.webm",
+      audioAssetId: asset.id,
+      duration: 19,
+      mimeType: "audio/webm"
+    });
+    upsertTranscript(handle, {
+      recordingId: "retry-card-r1",
+      rawText: "我想做一个行动项筛选功能，默认只显示未完成事项。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/retry-card-r1.txt"
+    });
+    await workflows.organizeNew(handle, new MockLLMProvider());
+
+    expect(countAll(handle).cards).toBeGreaterThan(0);
+    expect(requeueTranscriptionJob(handle, "retry-card-r1")).toBe("has_cards");
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
 });

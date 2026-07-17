@@ -1045,6 +1045,29 @@ audio {
   font-size: 12px;
 }
 
+.recording-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.retry-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .icon-button {
   width: 38px;
   height: 38px;

@@ -146,6 +146,10 @@ export function deleteRecording(recordingId: string): Promise<unknown> {
   return json(`/api/recordings/${recordingId}`, { method: "DELETE" });
 }
 
+export function retryTranscription(recordingId: string): Promise<unknown> {
+  return json(`/api/recordings/${recordingId}/retry-transcription`, { method: "POST" });
+}
+
 export function organizeNew(): Promise<{ processed: number; skipped: number; cardsCreated: number; relationsCreated: number }> {
   return json("/api/process/organize-new", { method: "POST" });
 }

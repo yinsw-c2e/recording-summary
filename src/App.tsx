@@ -43,6 +43,7 @@ import {
   logout,
   organizeNew,
   regenerateSummary,
+  retryTranscription,
   searchCards,
   uploadRecording,
   type Period,
@@ -192,11 +193,19 @@ function statusHelp(status: string, workerOnline: boolean): string {
     transcribed: "转写已完成，下一步会交给 AI 拆分卡片和更新总结。",
     organizing: "AI 正在清洗口语、拆分卡片并刷新总结。",
     organized: "已生成卡片并参与总结。",
-    no_content: "这段没有提取到有效想法，已保留原录音但不会强行总结。",
-    transcript_suspect: "转写结果疑似异常，建议重录或补充手动转写。",
-    failed: "处理失败，可保留排查，也可以删除这段录音。"
+    no_content: "这段没有提取到有效想法；如果你认为识别错了，可以重新转写或补充手动转写。",
+    transcript_suspect: "转写结果疑似异常，可以重新交给 Mac 转写，也可以补充手动转写。",
+    failed: "处理失败；如果原录音还在，可以重新交给 Mac 转写，也可以删除。"
   };
   return labels[status] ?? "状态已记录。";
+}
+
+function canRetryTranscription(item: RecordingListItem, sttMode: string | undefined): boolean {
+  return (
+    sttMode === "remote-worker" &&
+    item.cardCount === 0 &&
+    ["failed", "transcript_suspect", "no_content"].includes(item.status)
+  );
 }
 
 function markdownList(items: string[], emptyText: string): string[] {
@@ -804,11 +813,13 @@ export function App() {
   const busyText =
     busy === "delete"
       ? "正在删除并重建总结"
-      : busy
-        ? "转写、整理并生成总结中"
-        : recording
-          ? "正在记录"
-          : "准备就绪";
+      : busy === "retry-transcription"
+        ? "正在重新排队转写"
+        : busy
+          ? "转写、整理并生成总结中"
+          : recording
+            ? "正在记录"
+            : "准备就绪";
 
   if (!authChecked) {
     return <main className="app-shell"><div className="loading-card">加载中</div></main>;
@@ -1177,16 +1188,29 @@ export function App() {
                   {audioErrors[item.id] ? (
                     <div className="audio-warning">当前浏览器不能播放这段原始录音格式；转写和总结不受影响。</div>
                   ) : null}
-                  <button
-                    className="icon-button danger"
-                    type="button"
-                    aria-label="删除录音"
-                    title="删除录音"
-                    disabled={busy !== null}
-                    onClick={() => removeRecording(item).catch((err) => setError(err.message))}
-                  >
-                    <Trash2 size={17} />
-                  </button>
+                  <div className="recording-controls">
+                    {canRetryTranscription(item, today?.sttMode) ? (
+                      <button
+                        className="retry-button"
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => runAction("retry-transcription", () => retryTranscription(item.id))}
+                      >
+                        <RefreshCw size={15} />
+                        重新转写
+                      </button>
+                    ) : null}
+                    <button
+                      className="icon-button danger"
+                      type="button"
+                      aria-label="删除录音"
+                      title="删除录音"
+                      disabled={busy !== null}
+                      onClick={() => removeRecording(item).catch((err) => setError(err.message))}
+                    >
+                      <Trash2 size={17} />
+                    </button>
+                  </div>
                 </article>
               );
             })

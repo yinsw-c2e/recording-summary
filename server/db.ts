@@ -354,6 +354,58 @@ export function createTranscriptionJob(handle: DbHandle, recordingId: string): T
   return job;
 }
 
+export function requeueTranscriptionJob(
+  handle: DbHandle,
+  recordingId: string
+): { job: TranscriptionJob; recording: Recording } | null | "has_cards" {
+  const transaction = handle.db.transaction(() => {
+    const recording = getRecording(handle, recordingId);
+    if (!recording) return null;
+
+    const cardCount = (handle.db
+      .prepare("SELECT count(*) AS n FROM thought_cards WHERE source_recording_id = ?")
+      .get(recordingId) as { n: number }).n;
+    if (cardCount > 0) return "has_cards";
+
+    const stamp = now();
+    const existing = handle.db.prepare("SELECT * FROM transcription_jobs WHERE recording_id = ?").get(recordingId) as
+      | Record<string, unknown>
+      | undefined;
+
+    if (existing) {
+      handle.db
+        .prepare(
+          `UPDATE transcription_jobs
+           SET status = 'pending',
+               attempts = 0,
+               locked_by = NULL,
+               locked_at = NULL,
+               error = NULL,
+               updated_at = ?,
+               finished_at = NULL
+           WHERE recording_id = ?`
+        )
+        .run(stamp, recordingId);
+    } else {
+      createTranscriptionJob(handle, recordingId);
+    }
+
+    handle.db
+      .prepare("UPDATE transcripts SET status = 'failed', updated_at = ? WHERE recording_id = ?")
+      .run(stamp, recordingId);
+    updateRecordingStatus(handle, recordingId, "transcription_queued");
+
+    const job = handle.db.prepare("SELECT * FROM transcription_jobs WHERE recording_id = ?").get(recordingId) as
+      | Record<string, unknown>
+      | undefined;
+    const nextRecording = getRecording(handle, recordingId);
+    if (!job || !nextRecording) return null;
+    return { job: mapTranscriptionJob(job), recording: nextRecording };
+  });
+
+  return transaction() as { job: TranscriptionJob; recording: Recording } | null | "has_cards";
+}
+
 export function getTranscriptionJob(handle: DbHandle, id: string): TranscriptionJob | null {
   const row = handle.db.prepare("SELECT * FROM transcription_jobs WHERE id = ?").get(id) as Record<string, unknown> | undefined;
   return row ? mapTranscriptionJob(row) : null;

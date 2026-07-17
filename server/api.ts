@@ -27,6 +27,7 @@ import {
   listSummaries,
   markTranscriptionJobTranscribing,
   openDb,
+  requeueTranscriptionJob,
   searchCards,
   upsertWorkerHeartbeat,
   upsertTranscript,
@@ -245,6 +246,16 @@ export function buildServer(handle: DbHandle = openDb()) {
     });
     handle.db.prepare("UPDATE recordings SET status = 'transcribed' WHERE id = ?").run(id);
     return { ok: true };
+  });
+
+  app.post("/api/recordings/:id/retry-transcription", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    const result = requeueTranscriptionJob(handle, id);
+    if (!result) return reply.code(404).send({ error: "recording not found" });
+    if (result === "has_cards") {
+      return reply.code(409).send({ error: "recording already has cards; use deep reorganize if you need to rebuild it" });
+    }
+    return { ok: true, job: result.job, recording: result.recording, snapshot: getWorkerSnapshot(handle) };
   });
 
   app.post("/api/worker/heartbeat", async (request) => {
