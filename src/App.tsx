@@ -414,6 +414,8 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CardSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [targetCardId, setTargetCardId] = useState("");
+  const [highlightedCardId, setHighlightedCardId] = useState("");
   const [cardTypeFilter, setCardTypeFilter] = useState("all");
   const [recordingFilter, setRecordingFilter] = useState<RecordingFilter>("all");
   const [actionFilter, setActionFilter] = useState<ActionItemFilter>("open");
@@ -621,7 +623,7 @@ export function App() {
 
   function selectDay(
     day: string,
-    options: { scrollToContent?: boolean; updateUrl?: boolean; replaceUrl?: boolean; todayForUrl?: string } = {}
+    options: { scrollToContent?: boolean; updateUrl?: boolean; replaceUrl?: boolean; todayForUrl?: string; targetCardId?: string } = {}
   ) {
     const todayForUrl = options.todayForUrl ?? todayDayKeyValue;
     const nextDay = normalizeDayParam(day, todayForUrl);
@@ -637,6 +639,13 @@ export function App() {
     setEditingCardId("");
     setOpenCardSourceId("");
     setCardSourceLoadingId("");
+    if (options.targetCardId !== undefined) {
+      setTargetCardId(options.targetCardId);
+      setHighlightedCardId(options.targetCardId);
+    } else {
+      setTargetCardId("");
+      setHighlightedCardId("");
+    }
     if (options.updateUrl !== false) {
       writeUrlDayParam(nextDay, todayForUrl, options.replaceUrl ? "replace" : "push");
     }
@@ -653,11 +662,8 @@ export function App() {
     selectDay(todayDayKey, { scrollToContent: true });
   }
 
-  function jumpToSearchResult(day: string) {
-    selectDay(day);
-    window.setTimeout(() => {
-      document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+  function jumpToSearchResult(result: CardSearchResult) {
+    selectDay(result.dayKey, { targetCardId: result.id });
   }
 
   async function toggleActionDone(item: FocusActionItem) {
@@ -810,6 +816,26 @@ export function App() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [authenticated, recordings, selectedDayKey, visibleMonth]);
+
+  useEffect(() => {
+    if (!targetCardId || !activeData || !cards.some((card) => card.id === targetCardId)) return;
+
+    const scrollTimer = window.setTimeout(() => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>("[data-card-id]")).find(
+        (element) => element.dataset.cardId === targetCardId
+      );
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedCardId(targetCardId);
+    }, 80);
+    const clearTimer = window.setTimeout(() => {
+      setHighlightedCardId((current) => (current === targetCardId ? "" : current));
+    }, 3400);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [activeData, cards, targetCardId]);
 
   async function startRecording() {
     setError("");
@@ -1349,7 +1375,7 @@ export function App() {
                   type="button"
                   className="search-result"
                   key={result.id}
-                  onClick={() => jumpToSearchResult(result.dayKey)}
+                  onClick={() => jumpToSearchResult(result)}
                 >
                   <span>
                     {result.dayKey} · {typeLabels[result.type] ?? result.type}
@@ -2027,6 +2053,7 @@ export function App() {
                 key={card.id}
                 card={card}
                 relations={relationsByCard.get(card.id) ?? []}
+                isHighlighted={highlightedCardId === card.id}
                 copied={copiedSource === `card:${card.id}`}
                 sourceCopied={copiedSource === `card-source:${card.id}`}
                 onCopy={() => copyText(cardMarkdown(card, completedActions), `card:${card.id}`)}
@@ -2062,6 +2089,7 @@ export function App() {
 function ThoughtCardItem({
   card,
   relations,
+  isHighlighted,
   copied,
   sourceCopied,
   onCopy,
@@ -2083,6 +2111,7 @@ function ThoughtCardItem({
 }: {
   card: ThoughtCard;
   relations: CardRelationView[];
+  isHighlighted: boolean;
   copied: boolean;
   sourceCopied: boolean;
   onCopy: () => void;
@@ -2107,7 +2136,7 @@ function ThoughtCardItem({
 
   if (isEditing) {
     return (
-      <article className="thought-card card-editing">
+      <article className={`thought-card card-editing ${isHighlighted ? "is-search-target" : ""}`} data-card-id={card.id}>
         <div className="card-head">
           <span>编辑卡片</span>
           <small>人工确认</small>
@@ -2158,7 +2187,7 @@ function ThoughtCardItem({
   }
 
   return (
-    <article className="thought-card">
+    <article className={`thought-card ${isHighlighted ? "is-search-target" : ""}`} data-card-id={card.id}>
       <div className="card-head">
         <span>{typeLabels[card.type] ?? card.type}</span>
         <small>{card.reviewed ? "已复习 · " : ""}{card.starred ? "重点 · " : ""}{Math.round(card.confidence * 100)}%</small>
