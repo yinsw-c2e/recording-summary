@@ -367,7 +367,7 @@ export function App() {
   );
   const focusListeningScript = useMemo(() => {
     if (!cards.length) return "";
-    const day = selectedDayKey || todayDayKey;
+    const day = activeDay;
     const pendingActionItems = actionItems.filter((item) => !completedActions[item.id]);
     const lines = [
       `${day}重点。共 ${cards.length} 张卡片，${actionItems.length} 个行动项，已完成 ${completedActionCount} 个，${reviewCards.length} 个待确认。`
@@ -394,10 +394,10 @@ export function App() {
       if (cards.length > 6) lines.push(`还有 ${cards.length - 6} 张卡片。`);
     }
     return lines.join("\n");
-  }, [actionItems, cards, completedActionCount, completedActions, reviewCards, selectedDayKey, todayDayKey]);
+  }, [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]);
   const focusExportMarkdown = useMemo(() => {
     if (!cards.length) return "";
-    const day = selectedDayKey || todayDayKey;
+    const day = activeDay;
     const lines = [
       `# ${day} 重点`,
       "",
@@ -424,7 +424,7 @@ export function App() {
     );
 
     return lines.join("\n");
-  }, [actionItems, cards, completedActionCount, completedActions, reviewCards, selectedDayKey, todayDayKey]);
+  }, [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]);
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -472,7 +472,7 @@ export function App() {
   }
 
   function navigateDay(delta: number) {
-    selectDay(shiftDayKey(selectedDayKey || todayDayKey, delta), { scrollToContent: true });
+    selectDay(shiftDayKey(activeDay, delta), { scrollToContent: true });
   }
 
   function jumpToToday() {
@@ -1006,7 +1006,7 @@ export function App() {
             <ChevronLeft size={17} />
             <span>上一天</span>
           </button>
-          <strong>{selectedDayKey || todayDayKey}</strong>
+          <strong>{activeDay}</strong>
           <button type="button" aria-label="下一天" onClick={() => navigateDay(1)}>
             <span>下一天</span>
             <ChevronRight size={17} />
@@ -1056,7 +1056,7 @@ export function App() {
         <div className="calendar-grid">
           {calendarDays.map((day) => {
             const overview = overviewByDay.get(day.key);
-            const isSelected = selectedDayKey === day.key;
+            const isSelected = activeDay === day.key;
             const isToday = todayDayKey === day.key;
             const hasContent = Boolean(overview?.recordings || overview?.cards || overview?.hasSummary);
             const detail = [
@@ -1091,7 +1091,7 @@ export function App() {
       <section className="focus-panel">
         <div className="section-title">
           <ListChecks size={18} />
-          <h2>{selectedDayKey === todayDayKey ? "今日重点" : `${selectedDayKey} 重点`}</h2>
+          <h2>{isSelectedToday ? "今日重点" : `${activeDay} 重点`}</h2>
         </div>
         <div className="focus-metrics">
           <div>
@@ -1186,7 +1186,7 @@ export function App() {
       <section className="recordings-panel">
         <div className="section-title">
           <FileAudio size={18} />
-          <h2>{selectedDayKey === todayDayKey ? "今日录音" : `${selectedDayKey} 录音`}</h2>
+          <h2>{isSelectedToday ? "今日录音" : `${activeDay} 录音`}</h2>
         </div>
         {recordings.length ? (
           <div className="recording-filter" aria-label="录音状态筛选">
@@ -1410,7 +1410,7 @@ export function App() {
       <section className="cards-panel">
         <div className="section-title">
           <Sparkles size={18} />
-          <h2>{selectedDayKey === todayDayKey ? "今日卡片" : `${selectedDayKey} 卡片`}</h2>
+          <h2>{isSelectedToday ? "今日卡片" : `${activeDay} 卡片`}</h2>
         </div>
         {cards.length ? (
           <div className="card-filter" aria-label="卡片分类筛选">
