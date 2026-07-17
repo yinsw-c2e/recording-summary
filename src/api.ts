@@ -126,6 +126,7 @@ export interface MonthDayOverview {
   recordings: number;
   pending: number;
   cards: number;
+  reviewDue: number;
   hasSummary: boolean;
   summaryVersion: number | null;
 }

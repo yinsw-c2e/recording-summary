@@ -1223,7 +1223,15 @@ export function getTodayStats(handle: DbHandle, day: string): {
 export function listMonthOverview(
   handle: DbHandle,
   month: string
-): Array<{ dayKey: string; recordings: number; pending: number; cards: number; hasSummary: boolean; summaryVersion: number | null }> {
+): Array<{
+  dayKey: string;
+  recordings: number;
+  pending: number;
+  cards: number;
+  reviewDue: number;
+  hasSummary: boolean;
+  summaryVersion: number | null;
+}> {
   const rows = handle.db
     .prepare(
       `SELECT r.day_key AS dayKey,
@@ -1242,7 +1250,15 @@ export function listMonthOverview(
 
   const byDay = new Map<
     string,
-    { dayKey: string; recordings: number; pending: number; cards: number; hasSummary: boolean; summaryVersion: number | null }
+    {
+      dayKey: string;
+      recordings: number;
+      pending: number;
+      cards: number;
+      reviewDue: number;
+      hasSummary: boolean;
+      summaryVersion: number | null;
+    }
   >();
 
   for (const row of rows) {
@@ -1252,6 +1268,7 @@ export function listMonthOverview(
       recordings: Number(row.recordings),
       pending: Number(row.pending ?? 0),
       cards: 0,
+      reviewDue: 0,
       hasSummary: false,
       summaryVersion: null
     });
@@ -1259,9 +1276,12 @@ export function listMonthOverview(
 
   const cardRows = handle.db
     .prepare(
-      `SELECT r.day_key AS dayKey, count(c.id) AS cards
+      `SELECT r.day_key AS dayKey,
+              count(c.id) AS cards,
+              count(CASE WHEN rm.reviewed_at IS NULL THEN c.id END) AS reviewDue
        FROM recordings r
        JOIN thought_cards c ON c.source_recording_id = r.id AND c.version = 1
+       LEFT JOIN card_review_marks rm ON rm.card_id = c.id
        WHERE r.month_key = ?
        GROUP BY r.day_key`
     )
@@ -1269,8 +1289,17 @@ export function listMonthOverview(
 
   for (const row of cardRows) {
     const day = String(row.dayKey);
-    const current = byDay.get(day) ?? { dayKey: day, recordings: 0, pending: 0, cards: 0, hasSummary: false, summaryVersion: null };
+    const current = byDay.get(day) ?? {
+      dayKey: day,
+      recordings: 0,
+      pending: 0,
+      cards: 0,
+      reviewDue: 0,
+      hasSummary: false,
+      summaryVersion: null
+    };
     current.cards = Number(row.cards);
+    current.reviewDue = Number(row.reviewDue ?? 0);
     byDay.set(day, current);
   }
 
@@ -1285,7 +1314,15 @@ export function listMonthOverview(
 
   for (const row of summaryRows) {
     const day = String(row.dayKey);
-    const current = byDay.get(day) ?? { dayKey: day, recordings: 0, pending: 0, cards: 0, hasSummary: false, summaryVersion: null };
+    const current = byDay.get(day) ?? {
+      dayKey: day,
+      recordings: 0,
+      pending: 0,
+      cards: 0,
+      reviewDue: 0,
+      hasSummary: false,
+      summaryVersion: null
+    };
     current.hasSummary = true;
     current.summaryVersion = row.version === null ? null : Number(row.version);
     byDay.set(day, current);

@@ -580,9 +580,16 @@ describe("organizing workflow", () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });
 
-    const { openDb, createAudioAsset, createRecording, insertCard, insertSummary, listMonthOverview, updateRecordingStatus } = await import(
-      "../server/db"
-    );
+    const {
+      openDb,
+      createAudioAsset,
+      createRecording,
+      insertCard,
+      insertSummary,
+      listMonthOverview,
+      setCardReviewed,
+      updateRecordingStatus
+    } = await import("../server/db");
 
     const handle = openDb();
 
@@ -615,6 +622,20 @@ describe("organizing workflow", () => {
       version: 1,
       rawJson: {}
     });
+    const reviewedCard = insertCard(handle, {
+      type: "knowledge",
+      title: "已复习知识",
+      summary: "这张卡片已经复习，不应该进入待复习数量",
+      keyPoints: [],
+      actions: [],
+      tags: ["日期看板"],
+      sourceRecordingId: "calendar-r1",
+      sourceTextRange: "segment-2",
+      confidence: 0.88,
+      version: 1,
+      rawJson: {}
+    });
+    setCardReviewed(handle, reviewedCard.id, true);
     insertSummary(handle, {
       id: "summary-calendar-1",
       period: "day",
@@ -648,7 +669,8 @@ describe("organizing workflow", () => {
         dayKey: "2026-07-01",
         recordings: 1,
         pending: 0,
-        cards: 1,
+        cards: 2,
+        reviewDue: 1,
         hasSummary: true,
         summaryVersion: 2
       },
@@ -657,6 +679,7 @@ describe("organizing workflow", () => {
         recordings: 1,
         pending: 1,
         cards: 0,
+        reviewDue: 0,
         hasSummary: false,
         summaryVersion: null
       }

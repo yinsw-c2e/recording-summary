@@ -395,6 +395,7 @@ export function App() {
   const todayDayKey = todayDayKeyValue;
   const overviewByDay = useMemo(() => new Map(monthOverview.map((item) => [item.dayKey, item])), [monthOverview]);
   const selectedDayOverview = overviewByDay.get(activeDay);
+  const activeReviewDueCount = activeData?.stats.cards.filter((card) => !card.reviewed).length;
   const selectedDaySnapshot = useMemo(() => {
     const daySummary = activeData?.summaries.day;
     const summaryVersion = daySummary?.version ?? selectedDayOverview?.summaryVersion ?? null;
@@ -403,9 +404,10 @@ export function App() {
       recordings: activeData?.stats.recordings ?? selectedDayOverview?.recordings ?? 0,
       pending: activeData?.stats.pending ?? selectedDayOverview?.pending ?? 0,
       cards: activeData?.stats.cards.length ?? selectedDayOverview?.cards ?? 0,
+      reviewDue: activeReviewDueCount ?? selectedDayOverview?.reviewDue ?? 0,
       summaryLabel: summaryVersion ? `v${summaryVersion}` : hasDaySummary ? "已生成" : "未生成"
     };
-  }, [activeData, selectedDayOverview]);
+  }, [activeData, activeReviewDueCount, selectedDayOverview]);
   const dayDataLoading = authenticated && Boolean(activeDay) && !activeData;
   const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
   const actionItems = useMemo<FocusActionItem[]>(
@@ -1271,6 +1273,10 @@ export function App() {
             <strong>{selectedDaySnapshot.cards}</strong>
             卡片
           </span>
+          <span className={selectedDaySnapshot.reviewDue ? "review-due" : ""}>
+            <strong>{selectedDaySnapshot.reviewDue}</strong>
+            待复习
+          </span>
           <span>
             <strong>{selectedDaySnapshot.summaryLabel}</strong>
             总结
@@ -1300,6 +1306,7 @@ export function App() {
               overview?.recordings ? `${overview.recordings}录` : "",
               overview?.pending ? `${overview.pending}待` : "",
               overview?.cards ? `${overview.cards}卡` : "",
+              overview?.reviewDue ? `${overview.reviewDue}待复` : "",
               overview?.summaryVersion ? `v${overview.summaryVersion}` : ""
             ]
               .filter(Boolean)
