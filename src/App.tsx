@@ -886,6 +886,15 @@ export function App() {
     recorderRef.current?.stop();
   }
 
+  function toggleRecording() {
+    if (busy !== null) return;
+    if (recording) {
+      stopRecording();
+      return;
+    }
+    startRecording().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }
+
   async function runAction(label: string, action: () => Promise<unknown>) {
     setError("");
     setBusy(label);
@@ -1258,6 +1267,8 @@ export function App() {
           : recording
             ? "正在记录"
             : "准备就绪";
+  const quickRecordLabel = busy ? "处理中" : recording ? "停止记录" : "开始记录";
+  const quickRecordHint = busy ? "请稍候" : recording ? formatSeconds(elapsed) : "随时记录";
 
   if (!authChecked) {
     return <main className="app-shell"><div className="loading-card">加载中</div></main>;
@@ -1315,7 +1326,7 @@ export function App() {
       <section className="record-panel">
         <button
           className={`record-button ${recording ? "is-recording" : ""}`}
-          onClick={() => (recording ? stopRecording() : startRecording().catch((err) => setError(err.message)))}
+          onClick={toggleRecording}
           disabled={busy !== null}
           aria-label={recording ? "停止记录" : "开始记录"}
         >
@@ -2082,6 +2093,20 @@ export function App() {
           )}
         </div>
       </section>
+
+      <div className="quick-record-bar" aria-label="快速录音入口">
+        <button
+          type="button"
+          className={`quick-record-button ${recording ? "is-recording" : ""}`}
+          disabled={busy !== null}
+          aria-label={quickRecordLabel}
+          onClick={toggleRecording}
+        >
+          {busy ? <Loader2 className="spin" size={18} /> : recording ? <Square size={17} fill="currentColor" /> : <Mic size={18} />}
+          <span>{quickRecordLabel}</span>
+          <small>{quickRecordHint}</small>
+        </button>
+      </div>
     </main>
   );
 }
