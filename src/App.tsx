@@ -1162,6 +1162,13 @@ export function App() {
     });
   }
 
+  async function markReviewDueCardReviewed(card: ThoughtCard) {
+    await runAction("card-review", async () => {
+      await setThoughtCardReviewed(card.id, true);
+      if (speechSource === "review_due" && reviewDueCards.length <= 1) stopSpeaking();
+    });
+  }
+
   async function markReviewDueCardsReviewed() {
     const ids = reviewDueCards.map((card) => card.id);
     if (!ids.length) return;
@@ -1820,11 +1827,17 @@ export function App() {
             <div className="review-due-list">
               {reviewDueCards.slice(0, 3).map((card) => (
                 <article key={card.id} className="review-due-item">
-                  <div>
-                    <strong>{card.title}</strong>
-                    <small>
-                      {card.starred ? "重点 · " : ""}{typeLabels[card.type] ?? card.type}
-                    </small>
+                  <div className="review-due-item-head">
+                    <div className="review-due-title">
+                      <strong>{card.title}</strong>
+                      <small>
+                        {card.starred ? "重点 · " : ""}{typeLabels[card.type] ?? card.type}
+                      </small>
+                    </div>
+                    <button type="button" className="review-due-done" disabled={busy !== null} onClick={() => markReviewDueCardReviewed(card)}>
+                      <CheckCircle size={15} />
+                      已复习
+                    </button>
                   </div>
                   <p>{card.summary}</p>
                 </article>
