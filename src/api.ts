@@ -111,6 +111,7 @@ export interface TodayResponse {
     pending: number;
     organized: number;
     cards: ThoughtCard[];
+    completedActions: Record<string, true>;
   };
   recordings: RecordingListItem[];
   summaries: Record<Period, SummaryArtifact | null>;
@@ -231,6 +232,18 @@ export function setThoughtCardsReviewed(cardIds: string[], reviewed: boolean): P
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ cardIds, reviewed })
+  });
+}
+
+export function setActionItemCompleted(
+  cardId: string,
+  actionIndex: number,
+  completed: boolean
+): Promise<{ actionId: string; completed: boolean; completedActions: Record<string, true> }> {
+  return json(`/api/cards/${cardId}/actions/${actionIndex}/completed`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ completed })
   });
 }
 

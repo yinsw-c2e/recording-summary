@@ -4,6 +4,8 @@ export type CompletedActions = Record<string, true>;
 
 export interface FocusActionItem {
   id: string;
+  cardId: string;
+  actionIndex: number;
   action: string;
   title: string;
   type: string;

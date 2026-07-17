@@ -117,6 +117,8 @@ export interface ThoughtCard {
   updatedAt: string;
 }
 
+export type CompletedActionMap = Record<string, true>;
+
 export interface CardSearchResult extends ThoughtCard {
   dayKey: string;
   weekKey: string;

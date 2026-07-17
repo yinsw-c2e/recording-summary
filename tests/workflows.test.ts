@@ -499,6 +499,71 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("persists completed action items in day stats and prunes invalid marks after card edits", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const [
+      { openDb, createAudioAsset, createRecording, insertCard, getTodayStats, setActionItemCompleted, updateCard, deleteCardCascade },
+      { dayKey }
+    ] = await Promise.all([import("../server/db"), import("../server/time")]);
+
+    const handle = openDb();
+    const today = dayKey(new Date());
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "action-r1",
+      path: "raw_audio/action-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "action-r1",
+      audioPath: "raw_audio/action-r1.webm",
+      audioAssetId: asset.id,
+      duration: 8,
+      mimeType: "audio/webm"
+    });
+    const card = insertCard(handle, {
+      type: "task",
+      title: "行动项状态",
+      summary: "验证行动项完成状态会保存在服务端。",
+      keyPoints: [],
+      actions: ["买纸巾", "整理复习稿"],
+      tags: ["测试"],
+      sourceRecordingId: "action-r1",
+      sourceTextRange: "segment-1",
+      confidence: 0.9,
+      version: 1,
+      rawJson: { source: "test" }
+    });
+
+    expect(getTodayStats(handle, today).completedActions).toEqual({});
+    expect(setActionItemCompleted(handle, card.id, 1, true)?.completedActions).toEqual({ [`${card.id}-1`]: true });
+    expect(getTodayStats(handle, today).completedActions).toEqual({ [`${card.id}-1`]: true });
+    expect(setActionItemCompleted(handle, card.id, 7, true)).toBeNull();
+
+    expect(setActionItemCompleted(handle, card.id, 1, false)?.completedActions).toEqual({});
+    expect(getTodayStats(handle, today).completedActions).toEqual({});
+
+    expect(setActionItemCompleted(handle, card.id, 1, true)?.completedActions).toEqual({ [`${card.id}-1`]: true });
+    updateCard(handle, card.id, {
+      type: "task",
+      title: "行动项状态",
+      summary: "删除第二条行动项后，旧完成状态不应继续出现。",
+      keyPoints: [],
+      actions: ["买纸巾"],
+      tags: ["测试"]
+    });
+    expect(getTodayStats(handle, today).completedActions).toEqual({});
+
+    expect(setActionItemCompleted(handle, card.id, 0, true)?.completedActions).toEqual({ [`${card.id}-0`]: true });
+    deleteCardCascade(handle, card.id);
+    expect(getTodayStats(handle, today).completedActions).toEqual({});
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("deletes a failed recording without rebuilding summaries it never affected", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });

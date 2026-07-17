@@ -38,6 +38,8 @@ describe("focus artifacts", () => {
     const actionItems: FocusActionItem[] = [
       {
         id: "action-card-0",
+        cardId: "action-card",
+        actionIndex: 0,
         action: "继续整理复习流程",
         title: actionCard.title,
         type: actionCard.type

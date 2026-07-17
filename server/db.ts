@@ -6,6 +6,7 @@ import type {
   AudioAsset,
   CardRelation,
   CardSearchResult,
+  CompletedActionMap,
   Period,
   ProcessingJob,
   Recording,
@@ -128,6 +129,13 @@ function migrate(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS card_review_marks (
       card_id TEXT PRIMARY KEY,
       reviewed_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS action_item_marks (
+      card_id TEXT NOT NULL,
+      action_index INTEGER NOT NULL,
+      completed_at TEXT NOT NULL,
+      PRIMARY KEY(card_id, action_index)
     );
 
     CREATE TABLE IF NOT EXISTS summary_artifacts (
@@ -272,6 +280,10 @@ function mapTranscript(row: Record<string, unknown>): Transcript {
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function actionItemId(cardId: string, actionIndex: number): string {
+  return `${cardId}-${actionIndex}`;
 }
 
 export function createAudioAsset(handle: DbHandle, input: Omit<AudioAsset, "id" | "createdAt">): AudioAsset {
@@ -669,6 +681,7 @@ export function deleteRecordingCascade(handle: DbHandle, id: string): DeletedRec
     if (cardIds.length) {
       handle.db.prepare(`DELETE FROM card_marks WHERE card_id IN (${placeholders(cardIds)})`).run(...cardIds);
       handle.db.prepare(`DELETE FROM card_review_marks WHERE card_id IN (${placeholders(cardIds)})`).run(...cardIds);
+      handle.db.prepare(`DELETE FROM action_item_marks WHERE card_id IN (${placeholders(cardIds)})`).run(...cardIds);
     }
     const cardsDeleted = handle.db.prepare("DELETE FROM thought_cards WHERE source_recording_id = ?").run(recordingId).changes;
     handle.db.prepare("DELETE FROM transcripts WHERE recording_id = ?").run(recordingId);
@@ -766,6 +779,7 @@ export function deleteCardCascade(handle: DbHandle, id: string): DeletedCardCasc
     const cardsDeleted = handle.db.prepare("DELETE FROM thought_cards WHERE id = ?").run(cardId).changes;
     handle.db.prepare("DELETE FROM card_marks WHERE card_id = ?").run(cardId);
     handle.db.prepare("DELETE FROM card_review_marks WHERE card_id = ?").run(cardId);
+    handle.db.prepare("DELETE FROM action_item_marks WHERE card_id = ?").run(cardId);
     const remainingRecordingCards = Number(
       (handle.db.prepare("SELECT count(*) AS n FROM thought_cards WHERE source_recording_id = ?").get(recordingId) as { n: number }).n
     );
@@ -1006,6 +1020,8 @@ export function updateCard(
       })
     });
 
+  handle.db.prepare("DELETE FROM action_item_marks WHERE card_id = ? AND action_index >= ?").run(cardId, input.actions.length);
+
   return getCard(handle, cardId);
 }
 
@@ -1165,6 +1181,60 @@ export function setCardsReviewed(handle: DbHandle, cardIds: string[], reviewed: 
   return uniqueIds.map((id) => getCard(handle, id)).filter((card): card is ThoughtCard => Boolean(card));
 }
 
+export function listCompletedActionMapForCards(handle: DbHandle, cards: ThoughtCard[]): CompletedActionMap {
+  if (!cards.length) return {};
+  const cardIds = cards.map((card) => card.id);
+  const actionCounts = new Map(cards.map((card) => [card.id, card.actions.length]));
+  const rows = handle.db
+    .prepare(
+      `SELECT card_id, action_index
+       FROM action_item_marks
+       WHERE card_id IN (${placeholders(cardIds)})
+       ORDER BY completed_at ASC`
+    )
+    .all(...cardIds) as Array<{ card_id: string; action_index: number }>;
+
+  const result: CompletedActionMap = {};
+  for (const row of rows) {
+    const cardId = String(row.card_id);
+    const actionIndex = Number(row.action_index);
+    const actionCount = actionCounts.get(cardId) ?? 0;
+    if (Number.isInteger(actionIndex) && actionIndex >= 0 && actionIndex < actionCount) {
+      result[actionItemId(cardId, actionIndex)] = true;
+    }
+  }
+  return result;
+}
+
+export function setActionItemCompleted(
+  handle: DbHandle,
+  cardId: string,
+  actionIndex: number,
+  completed: boolean
+): { actionId: string; completed: boolean; completedActions: CompletedActionMap } | null {
+  if (!Number.isInteger(actionIndex) || actionIndex < 0) return null;
+  const card = getCard(handle, cardId);
+  if (!card || actionIndex >= card.actions.length) return null;
+
+  if (completed) {
+    handle.db
+      .prepare(
+        `INSERT INTO action_item_marks (card_id, action_index, completed_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(card_id, action_index) DO UPDATE SET completed_at = excluded.completed_at`
+      )
+      .run(cardId, actionIndex, now());
+  } else {
+    handle.db.prepare("DELETE FROM action_item_marks WHERE card_id = ? AND action_index = ?").run(cardId, actionIndex);
+  }
+
+  return {
+    actionId: actionItemId(cardId, actionIndex),
+    completed,
+    completedActions: listCompletedActionMapForCards(handle, [card])
+  };
+}
+
 export function getRelationsForCards(handle: DbHandle, cardIds: string[]): Array<{
   fromTitle: string;
   toTitle: string;
@@ -1196,6 +1266,7 @@ export function getTodayStats(handle: DbHandle, day: string): {
   pending: number;
   organized: number;
   cards: ThoughtCard[];
+  completedActions: CompletedActionMap;
 } {
   const recordings = Number(
     (handle.db.prepare("SELECT count(*) AS n FROM recordings WHERE day_key = ?").get(day) as { n: number }).n
@@ -1217,7 +1288,7 @@ export function getTodayStats(handle: DbHandle, day: string): {
     ).n
   );
   const cards = getCardsForPeriod(handle, "day", day);
-  return { recordings, pending, organized: cards.length, cards };
+  return { recordings, pending, organized: cards.length, cards, completedActions: listCompletedActionMapForCards(handle, cards) };
 }
 
 export function listMonthOverview(

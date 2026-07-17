@@ -52,6 +52,7 @@ import {
   retryTranscription,
   searchCards,
   saveTranscriptAndOrganize,
+  setActionItemCompleted,
   setThoughtCardReviewed,
   setThoughtCardsReviewed,
   setThoughtCardStarred,
@@ -301,6 +302,10 @@ function readCompletedActions(): CompletedActions {
   }
 }
 
+function mergeCompletedActions(...maps: Array<CompletedActions | Record<string, true> | undefined>): CompletedActions {
+  return Object.assign({}, ...maps.filter(Boolean)) as CompletedActions;
+}
+
 function cardMarkdown(card: ThoughtCard, completedActions: CompletedActions = {}): string {
   return [
     `# ${card.title}`,
@@ -401,6 +406,10 @@ export function App() {
   const activeDayLabel = isSelectedToday ? `今天 ${activeDay}` : activeDay;
   const selectedDayDataMatches = selectedDayData?.keys.day === activeDay;
   const activeData = selectedDayDataMatches ? selectedDayData : isSelectedToday ? today : null;
+  const serverCompletedActionKeys = useMemo(
+    () => Object.keys(activeData?.stats.completedActions ?? {}).sort().join("|"),
+    [activeData]
+  );
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
   const selectedKey = activeData?.keys[selectedPeriod] ?? "";
   const cards = activeData?.stats.cards ?? [];
@@ -429,6 +438,8 @@ export function App() {
       cards.flatMap((card) =>
         card.actions.map((action, index) => ({
           id: `${card.id}-${index}`,
+          cardId: card.id,
+          actionIndex: index,
           action,
           title: card.title,
           type: card.type
@@ -590,16 +601,26 @@ export function App() {
     }, 0);
   }
 
-  function toggleActionDone(id: string) {
+  async function toggleActionDone(item: FocusActionItem) {
+    const completed = !completedActions[item.id];
     setCompletedActions((current) => {
       const next = { ...current };
-      if (next[id]) {
-        delete next[id];
+      if (completed) {
+        next[item.id] = true;
       } else {
-        next[id] = true;
+        delete next[item.id];
       }
       return next;
     });
+
+    try {
+      const result = await setActionItemCompleted(item.cardId, item.actionIndex, completed);
+      setCompletedActions((current) => mergeCompletedActions(current, result.completedActions));
+      await refreshSelectedDay(activeDay);
+      await refreshVisibleMonth(visibleMonth);
+    } catch (err) {
+      setError(err instanceof Error ? `行动项已先保存在本机，服务器同步失败：${err.message}` : "行动项已先保存在本机，服务器同步失败");
+    }
   }
 
   useEffect(() => {
@@ -635,6 +656,11 @@ export function App() {
       // Ignore private-mode or quota failures; the checkbox state still works for this session.
     }
   }, [completedActions]);
+
+  useEffect(() => {
+    if (!activeData) return;
+    setCompletedActions(mergeCompletedActions(readCompletedActions(), activeData.stats.completedActions ?? {}));
+  }, [activeData?.keys.day, serverCompletedActionKeys]);
 
   useEffect(() => {
     if (!authenticated || !selectedDayKey) return;
@@ -1542,7 +1568,7 @@ export function App() {
                   <input
                     type="checkbox"
                     checked={Boolean(completedActions[item.id])}
-                    onChange={() => toggleActionDone(item.id)}
+                    onChange={() => void toggleActionDone(item)}
                   />
                   <span>{item.action}</span>
                   <small>

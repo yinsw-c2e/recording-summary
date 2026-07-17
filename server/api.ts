@@ -30,6 +30,7 @@ import {
   openDb,
   requeueTranscriptionJob,
   searchCards,
+  setActionItemCompleted,
   setCardReviewed,
   setCardsReviewed,
   setCardStarred,
@@ -324,6 +325,19 @@ export function buildServer(handle: DbHandle = openDb()) {
     const cards = setCardsReviewed(handle, body.cardIds, body.reviewed);
     if (!cards) return reply.code(404).send({ error: "one or more cards not found" });
     return { cards };
+  });
+
+  app.patch("/api/cards/:id/actions/:index/completed", async (request, reply) => {
+    const params = request.params as { id: string; index: string };
+    const actionIndex = Number(params.index);
+    const body = request.body as { completed?: unknown };
+    if (!Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex > 200) {
+      return reply.code(400).send({ error: "index must be a non-negative integer" });
+    }
+    if (typeof body.completed !== "boolean") return reply.code(400).send({ error: "completed must be boolean" });
+    const result = setActionItemCompleted(handle, params.id, actionIndex, body.completed);
+    if (!result) return reply.code(404).send({ error: "action item not found" });
+    return result;
   });
 
   app.post("/api/recordings/:id/transcript/organize", async (request, reply) => {
