@@ -67,6 +67,7 @@ const typeLabels: Record<string, string> = {
 type SpeechSource = "summary" | "focus";
 type CopySource = "focus" | "summary" | `card:${string}`;
 type CompletedActions = Record<string, true>;
+type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const completedActionsStorageKey = "recording-summary.completed-actions.v1";
@@ -78,7 +79,7 @@ const recordingMimeCandidates = [
   "audio/webm"
 ];
 
-const processingStatuses = new Set(["transcription_queued", "transcribing", "transcript_pending", "transcribed", "organizing"]);
+const processingStatuses = new Set(["uploaded", "transcription_queued", "transcribing", "transcript_pending", "transcribed", "organizing"]);
 const speechRates = [1, 1.25, 1.5, 1.75, 2];
 
 function preferredRecordingMimeType(): string {
@@ -152,6 +153,31 @@ function statusLabel(status: string): string {
     failed: "失败"
   };
   return labels[status] ?? status;
+}
+
+function statusTone(status: string): StatusTone {
+  if (["organized"].includes(status)) return "done";
+  if (["transcribing", "organizing"].includes(status)) return "active";
+  if (["uploaded", "transcription_queued", "transcript_pending", "transcribed"].includes(status)) return "pending";
+  if (["no_content", "transcript_suspect"].includes(status)) return "warning";
+  if (status === "failed") return "danger";
+  return "muted";
+}
+
+function statusHelp(status: string, workerOnline: boolean): string {
+  const labels: Record<string, string> = {
+    uploaded: "录音已保存，正在进入转写队列。",
+    transcription_queued: workerOnline ? "已排队，Mac Worker 会自动领取转写。" : "已排队；Mac 当前离线，恢复在线后会自动转写。",
+    transcribing: "Mac 正在调用本地 Whisper 转写，完成后会回传云端。",
+    transcript_pending: "等待转写文本；如果使用手动转写，可在下方补充。",
+    transcribed: "转写已完成，下一步会交给 AI 拆分卡片和更新总结。",
+    organizing: "AI 正在清洗口语、拆分卡片并刷新总结。",
+    organized: "已生成卡片并参与总结。",
+    no_content: "这段没有提取到有效想法，已保留原录音但不会强行总结。",
+    transcript_suspect: "转写结果疑似异常，建议重录或补充手动转写。",
+    failed: "处理失败，可保留排查，也可以删除这段录音。"
+  };
+  return labels[status] ?? "状态已记录。";
 }
 
 function markdownList(items: string[], emptyText: string): string[] {
@@ -696,6 +722,50 @@ export function App() {
   }, [today]);
   const providerLabel = today?.provider === "mock" ? "本地测试模式" : today?.provider ?? "local";
   const workerOnline = worker?.workers.some((item) => Date.now() - new Date(item.lastHeartbeatAt).getTime() < 60_000) ?? false;
+  const recordingPipelineHint = useMemo(() => {
+    const queued = recordings.filter((item) => ["uploaded", "transcription_queued", "transcript_pending"].includes(item.status)).length;
+    const transcribing = recordings.filter((item) => item.status === "transcribing").length;
+    const organizing = recordings.filter((item) => ["transcribed", "organizing"].includes(item.status)).length;
+    const failed = recordings.filter((item) => item.status === "failed").length;
+    const suspect = recordings.filter((item) => ["no_content", "transcript_suspect"].includes(item.status)).length;
+
+    if (transcribing || organizing) {
+      const parts = [
+        queued ? `等待 ${queued}` : "",
+        transcribing ? `Mac 转写 ${transcribing}` : "",
+        organizing ? `AI 整理 ${organizing}` : ""
+      ].filter(Boolean);
+      return {
+        tone: "active" as StatusTone,
+        text: `当前有 ${queued + transcribing + organizing} 段录音未完成：${parts.join(" · ")}。完成后卡片和总结会自动刷新。`,
+        spinning: true
+      };
+    }
+
+    if (queued) {
+      return {
+        tone: workerOnline ? "pending" as StatusTone : "warning" as StatusTone,
+        text: workerOnline
+          ? `还有 ${queued} 段等待 Mac 转写；排队期间可以继续录音。`
+          : `还有 ${queued} 段等待 Mac 转写；Mac 离线时会先排队，恢复在线后自动处理。`,
+        spinning: false
+      };
+    }
+
+    if (failed || suspect) {
+      const parts = [
+        failed ? `失败 ${failed}` : "",
+        suspect ? `异常或无有效内容 ${suspect}` : ""
+      ].filter(Boolean);
+      return {
+        tone: failed ? "danger" as StatusTone : "warning" as StatusTone,
+        text: `有 ${failed + suspect} 段录音需要确认：${parts.join(" · ")}。下方每条录音会说明下一步。`,
+        spinning: false
+      };
+    }
+
+    return null;
+  }, [recordings, workerOnline]);
   const busyText =
     busy === "delete"
       ? "正在删除并重建总结"
@@ -790,6 +860,13 @@ export function App() {
         </div>
         <small>{today?.sttMode === "remote-worker" ? "手机上传后由 Mac Whisper large-v3 转写" : "本机转写模式"}</small>
       </section>
+
+      {recordingPipelineHint ? (
+        <div className={`processing-hint ${recordingPipelineHint.tone}`}>
+          {recordingPipelineHint.spinning ? <Loader2 className="spin" size={16} /> : <AlertCircle size={16} />}
+          <span>{recordingPipelineHint.text}</span>
+        </div>
+      ) : null}
 
       <section className="search-panel">
         <div className="section-title">
@@ -1006,36 +1083,43 @@ export function App() {
         </div>
         <div className="recording-list">
           {recordings.length ? (
-            recordings.map((item) => (
-              <article className="recording-item" key={item.id}>
-                <div className="recording-info">
-                  <span>{formatDateTime(item.createdAt)}</span>
-                  <small>
-                    {statusLabel(item.status)} · {item.duration === null ? "--:--" : formatSeconds(item.duration)} · {item.cardCount} 张卡片
-                  </small>
-                  {item.error ? <em>{item.error}</em> : null}
-                </div>
-                <audio
-                  controls
-                  src={audioUrl(item.audioAssetId)}
-                  onCanPlay={() => setAudioErrors((current) => ({ ...current, [item.id]: false }))}
-                  onError={() => setAudioErrors((current) => ({ ...current, [item.id]: true }))}
-                />
-                {audioErrors[item.id] ? (
-                  <div className="audio-warning">当前浏览器不能播放这段原始录音格式；转写和总结不受影响。</div>
-                ) : null}
-                <button
-                  className="icon-button danger"
-                  type="button"
-                  aria-label="删除录音"
-                  title="删除录音"
-                  disabled={busy !== null}
-                  onClick={() => removeRecording(item).catch((err) => setError(err.message))}
-                >
-                  <Trash2 size={17} />
-                </button>
-              </article>
-            ))
+            recordings.map((item) => {
+              const tone = statusTone(item.status);
+              return (
+                <article className="recording-item" key={item.id}>
+                  <div className="recording-info">
+                    <div className="recording-title-row">
+                      <span>{formatDateTime(item.createdAt)}</span>
+                      <strong className={`recording-status ${tone}`}>{statusLabel(item.status)}</strong>
+                    </div>
+                    <small>
+                      {item.duration === null ? "--:--" : formatSeconds(item.duration)} · {item.cardCount} 张卡片
+                    </small>
+                    <p>{statusHelp(item.status, workerOnline)}</p>
+                    {item.error ? <em>{item.error}</em> : null}
+                  </div>
+                  <audio
+                    controls
+                    src={audioUrl(item.audioAssetId)}
+                    onCanPlay={() => setAudioErrors((current) => ({ ...current, [item.id]: false }))}
+                    onError={() => setAudioErrors((current) => ({ ...current, [item.id]: true }))}
+                  />
+                  {audioErrors[item.id] ? (
+                    <div className="audio-warning">当前浏览器不能播放这段原始录音格式；转写和总结不受影响。</div>
+                  ) : null}
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    aria-label="删除录音"
+                    title="删除录音"
+                    disabled={busy !== null}
+                    onClick={() => removeRecording(item).catch((err) => setError(err.message))}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </article>
+              );
+            })
           ) : (
             <div className="empty-card">暂无录音</div>
           )}
