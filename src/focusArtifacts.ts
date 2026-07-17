@@ -65,6 +65,39 @@ export function buildFocusListeningScript(input: {
   return lines.join("\n");
 }
 
+export function buildReviewDueListeningScript(input: {
+  day: string;
+  cards: ThoughtCard[];
+  typeLabels: Record<string, string>;
+}): string {
+  const reviewDueCards = input.cards.filter((card) => !card.reviewed);
+  if (!reviewDueCards.length) return "";
+
+  const starredCards = reviewDueCards.filter((card) => card.starred);
+  const regularCards = reviewDueCards.filter((card) => !card.starred);
+  const lines = [
+    `${input.day}待复习。共 ${reviewDueCards.length} 张卡片，其中 ${starredCards.length} 张已标重点。`
+  ];
+
+  if (starredCards.length) {
+    lines.push("先复习重点卡片。");
+    starredCards.slice(0, 8).forEach((card, index) => {
+      lines.push(`${index + 1}. ${input.typeLabels[card.type] ?? card.type}，${card.title}。${card.summary}`);
+    });
+    if (starredCards.length > 8) lines.push(`还有 ${starredCards.length - 8} 张重点待复习卡片。`);
+  }
+
+  if (regularCards.length) {
+    lines.push("其他待复习卡片。");
+    regularCards.slice(0, 10).forEach((card, index) => {
+      lines.push(`${index + 1}. ${input.typeLabels[card.type] ?? card.type}，${card.title}。${card.summary}`);
+    });
+    if (regularCards.length > 10) lines.push(`还有 ${regularCards.length - 10} 张待复习卡片，请打开页面查看。`);
+  }
+
+  return lines.join("\n");
+}
+
 export function buildFocusExportMarkdown(input: {
   day: string;
   cards: ThoughtCard[];

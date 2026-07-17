@@ -75,6 +75,7 @@ import {
 import {
   buildFocusExportMarkdown,
   buildFocusListeningScript,
+  buildReviewDueListeningScript,
   markdownList,
   type CompletedActions,
   type FocusActionItem
@@ -97,7 +98,7 @@ const typeLabels: Record<string, string> = {
   uncertain: "待确认"
 };
 
-type SpeechSource = "summary" | "focus";
+type SpeechSource = "summary" | "focus" | "review_due";
 type CopySource = "focus" | "summary" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type CardDraft = {
@@ -473,6 +474,15 @@ export function App() {
         reviewCards
       }),
     [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]
+  );
+  const reviewDueListeningScript = useMemo(
+    () =>
+      buildReviewDueListeningScript({
+        day: activeDay,
+        cards,
+        typeLabels
+      }),
+    [activeDay, cards]
   );
   const focusExportMarkdown = useMemo(
     () =>
@@ -989,6 +999,10 @@ export function App() {
     speakText(focusListeningScript, "focus", rate);
   }
 
+  function speakReviewDue(rate = speechRate) {
+    speakText(reviewDueListeningScript, "review_due", rate);
+  }
+
   function changeSpeechRate(rate: number) {
     setSpeechRate(rate);
     if (speechSource) {
@@ -997,6 +1011,7 @@ export function App() {
       window.setTimeout(() => {
         if (currentSource === "summary") speakSummary(rate);
         if (currentSource === "focus") speakFocus(rate);
+        if (currentSource === "review_due") speakReviewDue(rate);
       }, 0);
     }
   }
@@ -1359,6 +1374,15 @@ export function App() {
             {speechSource === "focus" ? "停止朗读" : `朗读重点 ${speechRate}x`}
           </button>
           <button
+            className="focus-speech review-due-speech"
+            type="button"
+            disabled={!reviewDueListeningScript || !("speechSynthesis" in window)}
+            onClick={speechSource === "review_due" ? stopSpeaking : () => speakReviewDue()}
+          >
+            <Volume2 size={16} />
+            {speechSource === "review_due" ? "停止待复习" : `朗读待复习 ${speechRate}x`}
+          </button>
+          <button
             className="copy-button"
             type="button"
             disabled={!focusExportMarkdown}
@@ -1368,6 +1392,36 @@ export function App() {
             {copiedSource === "focus" ? "已复制" : "复制重点"}
           </button>
         </div>
+        {reviewDueCards.length ? (
+          <div className="focus-block review-due-focus">
+            <div className="focus-block-head with-action">
+              <strong>待复习</strong>
+              <button
+                type="button"
+                onClick={() => {
+                  setCardTypeFilter("review_due");
+                  document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                查看全部
+              </button>
+            </div>
+            <div className="review-due-list">
+              {reviewDueCards.slice(0, 3).map((card) => (
+                <article key={card.id} className="review-due-item">
+                  <div>
+                    <strong>{card.title}</strong>
+                    <small>
+                      {card.starred ? "重点 · " : ""}{typeLabels[card.type] ?? card.type}
+                    </small>
+                  </div>
+                  <p>{card.summary}</p>
+                </article>
+              ))}
+              {reviewDueCards.length > 3 ? <small className="more-count">还有 {reviewDueCards.length - 3} 张待复习卡片</small> : null}
+            </div>
+          </div>
+        ) : null}
         {starredCards.length ? (
           <div className="focus-block starred-focus">
             <div className="focus-block-head with-action">
