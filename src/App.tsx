@@ -9,6 +9,7 @@ import {
   Clipboard,
   Trash2,
   FileAudio,
+  FileText,
   ListChecks,
   Loader2,
   LogOut,
@@ -37,6 +38,7 @@ import {
   getAuthStatus,
   getDayDashboard,
   getMonthOverview,
+  getRecordingTranscript,
   getSummaryMarkdown,
   getToday,
   login,
@@ -50,6 +52,7 @@ import {
   type CardSearchResult,
   type MonthDayOverview,
   type RecordingListItem,
+  type RecordingTranscript,
   type SummaryArtifact,
   type ThoughtCard,
   type TodayResponse
@@ -80,7 +83,7 @@ const typeLabels: Record<string, string> = {
 };
 
 type SpeechSource = "summary" | "focus";
-type CopySource = "focus" | "summary" | `card:${string}`;
+type CopySource = "focus" | "summary" | `card:${string}` | `transcript:${string}`;
 type CompletedActions = Record<string, true>;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type FocusActionItem = {
@@ -175,6 +178,15 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+function transcriptStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pending: "待处理",
+    completed: "已完成",
+    failed: "已失效"
+  };
+  return labels[status] ?? status;
+}
+
 function statusTone(status: string): StatusTone {
   if (["organized"].includes(status)) return "done";
   if (["transcribing", "organizing"].includes(status)) return "active";
@@ -263,6 +275,9 @@ export function App() {
   const [speechRate, setSpeechRate] = useState(1.5);
   const [copiedSource, setCopiedSource] = useState<CopySource | null>(null);
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
+  const [transcripts, setTranscripts] = useState<Record<string, RecordingTranscript>>({});
+  const [openTranscriptId, setOpenTranscriptId] = useState("");
+  const [transcriptLoadingId, setTranscriptLoadingId] = useState("");
   const [selectedDayKey, setSelectedDayKey] = useState("");
   const [selectedDayData, setSelectedDayData] = useState<TodayResponse | null>(null);
   const [visibleMonth, setVisibleMonth] = useState("");
@@ -452,6 +467,7 @@ export function App() {
     setCardTypeFilter("all");
     setRecordingFilter("all");
     setActionFilter("open");
+    setOpenTranscriptId("");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -649,6 +665,28 @@ export function App() {
     await runAction("delete", () => deleteRecording(recording.id));
   }
 
+  async function toggleTranscript(recording: RecordingListItem) {
+    if (openTranscriptId === recording.id) {
+      setOpenTranscriptId("");
+      return;
+    }
+
+    setOpenTranscriptId(recording.id);
+    if (transcripts[recording.id]) return;
+
+    setError("");
+    setTranscriptLoadingId(recording.id);
+    try {
+      const transcript = await getRecordingTranscript(recording.id);
+      setTranscripts((current) => ({ ...current, [recording.id]: transcript }));
+    } catch (err) {
+      setOpenTranscriptId("");
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTranscriptLoadingId("");
+    }
+  }
+
   async function submitLogin(event: FormEvent) {
     event.preventDefault();
     setError("");
@@ -685,6 +723,9 @@ export function App() {
     setSearchBusy(false);
     setCardTypeFilter("all");
     setActionFilter("open");
+    setOpenTranscriptId("");
+    setTranscriptLoadingId("");
+    setTranscripts({});
     setCopiedSource(null);
   }
 
@@ -1189,6 +1230,17 @@ export function App() {
                     <div className="audio-warning">当前浏览器不能播放这段原始录音格式；转写和总结不受影响。</div>
                   ) : null}
                   <div className="recording-controls">
+                    {item.hasTranscript ? (
+                      <button
+                        className="transcript-button"
+                        type="button"
+                        disabled={transcriptLoadingId === item.id}
+                        onClick={() => toggleTranscript(item)}
+                      >
+                        {transcriptLoadingId === item.id ? <Loader2 className="spin" size={15} /> : <FileText size={15} />}
+                        {openTranscriptId === item.id ? "收起转写" : "查看转写"}
+                      </button>
+                    ) : null}
                     {canRetryTranscription(item, today?.sttMode) ? (
                       <button
                         className="retry-button"
@@ -1211,6 +1263,31 @@ export function App() {
                       <Trash2 size={17} />
                     </button>
                   </div>
+                  {openTranscriptId === item.id ? (
+                    <div className="recording-transcript">
+                      {transcriptLoadingId === item.id ? (
+                        <div className="empty-card compact">正在读取转写</div>
+                      ) : transcripts[item.id] ? (
+                        <>
+                          <div className="transcript-meta">
+                            <span>{transcriptStatusLabel(transcripts[item.id].status)}</span>
+                            <span>{transcripts[item.id].language || "未知语言"}</span>
+                            <button
+                              className="copy-button"
+                              type="button"
+                              onClick={() => copyText(transcripts[item.id].rawText, `transcript:${item.id}`)}
+                            >
+                              {copiedSource === `transcript:${item.id}` ? <Check size={15} /> : <Clipboard size={15} />}
+                              {copiedSource === `transcript:${item.id}` ? "已复制" : "复制转写"}
+                            </button>
+                          </div>
+                          <pre>{transcripts[item.id].rawText}</pre>
+                        </>
+                      ) : (
+                        <div className="empty-card compact">暂无转写文本</div>
+                      )}
+                    </div>
+                  ) : null}
                 </article>
               );
             })

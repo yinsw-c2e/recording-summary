@@ -19,6 +19,7 @@ import {
   getAudioAsset,
   getLatestSummary,
   getRecording,
+  getTranscriptForRecording,
   getTranscriptionJob,
   getTodayStats,
   getWorkerSnapshot,
@@ -246,6 +247,22 @@ export function buildServer(handle: DbHandle = openDb()) {
     });
     handle.db.prepare("UPDATE recordings SET status = 'transcribed' WHERE id = ?").run(id);
     return { ok: true };
+  });
+
+  app.get("/api/recordings/:id/transcript", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    if (!getRecording(handle, id)) return reply.code(404).send({ error: "recording not found" });
+    const transcript = getTranscriptForRecording(handle, id);
+    if (!transcript) return reply.code(404).send({ error: "transcript not found" });
+    return {
+      recordingId: transcript.recordingId,
+      rawText: transcript.rawText,
+      language: transcript.language,
+      sourceTimeRanges: transcript.sourceTimeRanges,
+      status: transcript.status,
+      createdAt: transcript.createdAt,
+      updatedAt: transcript.updatedAt
+    };
   });
 
   app.post("/api/recordings/:id/retry-transcription", async (request, reply) => {

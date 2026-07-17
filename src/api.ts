@@ -37,9 +37,21 @@ export interface RecordingListItem {
   createdAt: string;
   audioAssetId: string;
   cardCount: number;
+  hasTranscript: boolean;
+  transcriptStatus: string | null;
   transcriptionJobStatus: string | null;
   workerId: string | null;
   error: string | null;
+}
+
+export interface RecordingTranscript {
+  recordingId: string;
+  rawText: string;
+  language: string;
+  sourceTimeRanges: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WorkerSnapshot {
@@ -140,6 +152,10 @@ export function attachTranscript(recordingId: string, text: string): Promise<{ o
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text })
   });
+}
+
+export function getRecordingTranscript(recordingId: string): Promise<RecordingTranscript> {
+  return json(`/api/recordings/${recordingId}/transcript`);
 }
 
 export function deleteRecording(recordingId: string): Promise<unknown> {

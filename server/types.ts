@@ -60,6 +60,8 @@ export interface RecordingListItem {
   createdAt: string;
   audioAssetId: string;
   cardCount: number;
+  hasTranscript: boolean;
+  transcriptStatus: Transcript["status"] | null;
   transcriptionJobStatus: TranscriptionJobStatus | null;
   workerId: string | null;
   error: string | null;

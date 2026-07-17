@@ -232,6 +232,19 @@ function mapCardSearchResult(row: Record<string, unknown>): CardSearchResult {
   };
 }
 
+function mapTranscript(row: Record<string, unknown>): Transcript {
+  return {
+    recordingId: String(row.recording_id),
+    rawText: String(row.raw_text),
+    language: String(row.language),
+    sourceTimeRanges: String(row.source_time_ranges),
+    status: String(row.status) as Transcript["status"],
+    path: String(row.path),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at)
+  };
+}
+
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
@@ -302,10 +315,12 @@ export function listRecordingsForDay(handle: DbHandle, day: string): RecordingLi
     .prepare(
       `SELECT r.id, r.duration, r.status, r.created_at, r.audio_asset_id, r.error,
               tj.status AS transcription_job_status, tj.locked_by AS worker_id,
+              t.status AS transcript_status,
               count(c.id) AS card_count
        FROM recordings r
        LEFT JOIN thought_cards c ON c.source_recording_id = r.id
        LEFT JOIN transcription_jobs tj ON tj.recording_id = r.id
+       LEFT JOIN transcripts t ON t.recording_id = r.id
        WHERE r.day_key = ?
        GROUP BY r.id
        ORDER BY r.created_at DESC`
@@ -319,6 +334,8 @@ export function listRecordingsForDay(handle: DbHandle, day: string): RecordingLi
     createdAt: String(row.created_at),
     audioAssetId: String(row.audio_asset_id),
     cardCount: Number(row.card_count),
+    hasTranscript: row.transcript_status !== null,
+    transcriptStatus: row.transcript_status === null ? null : (String(row.transcript_status) as Transcript["status"]),
     transcriptionJobStatus: row.transcription_job_status === null ? null : (String(row.transcription_job_status) as TranscriptionJobStatus),
     workerId: row.worker_id === null ? null : String(row.worker_id),
     error: row.error === null ? null : String(row.error)
@@ -692,6 +709,13 @@ export function upsertTranscript(
   return transcript;
 }
 
+export function getTranscriptForRecording(handle: DbHandle, recordingId: string): Transcript | null {
+  const row = handle.db.prepare("SELECT * FROM transcripts WHERE recording_id = ?").get(recordingId) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? mapTranscript(row) : null;
+}
+
 export function getPendingTranscripts(handle: DbHandle): Array<Transcript & { recordingCreatedAt: string }> {
   const rows = handle.db
     .prepare(
@@ -709,14 +733,7 @@ export function getPendingTranscripts(handle: DbHandle): Array<Transcript & { re
     .all() as Array<Record<string, unknown>>;
 
   return rows.map((row) => ({
-    recordingId: String(row.recording_id),
-    rawText: String(row.raw_text),
-    language: String(row.language),
-    sourceTimeRanges: String(row.source_time_ranges),
-    status: String(row.status) as Transcript["status"],
-    path: String(row.path),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    ...mapTranscript(row),
     recordingCreatedAt: String(row.recording_created_at)
   }));
 }
@@ -740,14 +757,7 @@ export function getTranscriptsForPeriod(handle: DbHandle, period: Period, key: s
     .all({ key }) as Array<Record<string, unknown>>;
 
   return rows.map((row) => ({
-    recordingId: String(row.recording_id),
-    rawText: String(row.raw_text),
-    language: String(row.language),
-    sourceTimeRanges: String(row.source_time_ranges),
-    status: String(row.status) as Transcript["status"],
-    path: String(row.path),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
+    ...mapTranscript(row),
     recordingCreatedAt: String(row.recording_created_at)
   }));
 }

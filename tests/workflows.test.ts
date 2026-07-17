@@ -546,6 +546,48 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("exposes transcript availability and raw text for a recording", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const { openDb, createAudioAsset, createRecording, getTranscriptForRecording, listRecordingsForDay, upsertTranscript } = await import("../server/db");
+
+    const handle = openDb();
+    const asset = createAudioAsset(handle, {
+      kind: "recording",
+      ownerId: "transcript-r1",
+      path: "raw_audio/transcript-r1.webm",
+      mimeType: "audio/webm"
+    });
+    createRecording(handle, {
+      id: "transcript-r1",
+      audioPath: "raw_audio/transcript-r1.webm",
+      audioAssetId: asset.id,
+      duration: 21,
+      mimeType: "audio/webm"
+    });
+    handle.db
+      .prepare("UPDATE recordings SET created_at = ?, day_key = ?, week_key = ?, month_key = ? WHERE id = ?")
+      .run("2026-07-06T02:00:00.000Z", "2026-07-06", "2026-W27", "2026-07", "transcript-r1");
+    upsertTranscript(handle, {
+      recordingId: "transcript-r1",
+      rawText: "这是一段可以回看的原始转写文本。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/transcript-r1.txt"
+    });
+
+    const recordings = listRecordingsForDay(handle, "2026-07-06");
+    expect(recordings[0]?.hasTranscript).toBe(true);
+    expect(recordings[0]?.transcriptStatus).toBe("completed");
+    expect(getTranscriptForRecording(handle, "transcript-r1")?.rawText).toBe("这是一段可以回看的原始转写文本。");
+    expect(getTranscriptForRecording(handle, "missing")).toBeNull();
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("claims a remote transcription job once and completes it into cards", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });

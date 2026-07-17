@@ -1053,7 +1053,8 @@ audio {
   flex-wrap: wrap;
 }
 
-.retry-button {
+.retry-button,
+.transcript-button {
   min-height: 38px;
   display: inline-flex;
   align-items: center;
@@ -1066,6 +1067,48 @@ audio {
   color: #263244;
   font-size: 13px;
   font-weight: 800;
+}
+
+.recording-transcript {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.transcript-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.transcript-meta span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.transcript-meta .copy-button {
+  margin-left: auto;
+  min-height: 32px;
+}
+
+.recording-transcript pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #263244;
+  line-height: 1.58;
+  font-size: 13px;
 }
 
 .icon-button {
