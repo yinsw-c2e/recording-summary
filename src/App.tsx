@@ -118,6 +118,7 @@ const relationLabels: Record<string, string> = {
 type SpeechSource = "summary" | "focus" | "review_due";
 type CopySource = "focus" | "summary" | "day-archive" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
+type WakeLockState = "idle" | "active" | "released" | "unsupported" | "failed";
 type CardDraft = {
   type: string;
   title: string;
@@ -125,6 +126,15 @@ type CardDraft = {
   keyPoints: string;
   actions: string;
   tags: string;
+};
+type WakeLockSentinelLike = {
+  release: () => Promise<void>;
+  addEventListener?: (type: "release", listener: () => void) => void;
+};
+type NavigatorWithWakeLock = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<WakeLockSentinelLike>;
+  };
 };
 
 const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
@@ -416,6 +426,7 @@ export function App() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [targetCardId, setTargetCardId] = useState("");
   const [highlightedCardId, setHighlightedCardId] = useState("");
+  const [wakeLockState, setWakeLockState] = useState<WakeLockState>("idle");
   const [cardTypeFilter, setCardTypeFilter] = useState("all");
   const [recordingFilter, setRecordingFilter] = useState<RecordingFilter>("all");
   const [actionFilter, setActionFilter] = useState<ActionItemFilter>("open");
@@ -426,6 +437,7 @@ export function App() {
   const startedAtRef = useRef(0);
   const dayContentRef = useRef<HTMLDivElement | null>(null);
   const speechRunRef = useRef(0);
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
 
   const todayDayKeyValue = today?.keys.day ?? todayKey();
   const activeDay = selectedDayKey || todayDayKeyValue;
@@ -805,6 +817,63 @@ export function App() {
       setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000));
     }, 250);
     return () => window.clearInterval(timer);
+  }, [recording]);
+
+  async function requestRecordingWakeLock() {
+    const wakeLock = (navigator as NavigatorWithWakeLock).wakeLock;
+    if (!wakeLock) {
+      setWakeLockState("unsupported");
+      return;
+    }
+    if (wakeLockRef.current || document.visibilityState !== "visible") return;
+
+    try {
+      const sentinel = await wakeLock.request("screen");
+      wakeLockRef.current = sentinel;
+      setWakeLockState("active");
+      sentinel.addEventListener?.("release", () => {
+        if (wakeLockRef.current === sentinel) {
+          wakeLockRef.current = null;
+          setWakeLockState((current) => (current === "active" ? "released" : current));
+        }
+      });
+    } catch {
+      setWakeLockState("failed");
+    }
+  }
+
+  function releaseRecordingWakeLock() {
+    const sentinel = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (sentinel) void sentinel.release().catch(() => undefined);
+    setWakeLockState("idle");
+  }
+
+  useEffect(() => {
+    if (!recording) {
+      releaseRecordingWakeLock();
+      return;
+    }
+
+    void requestRecordingWakeLock();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void requestRecordingWakeLock();
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "录音还在进行中，离开会丢失未上传内容。";
+      return event.returnValue;
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      releaseRecordingWakeLock();
+    };
   }, [recording]);
 
   useEffect(() => {
@@ -1267,6 +1336,12 @@ export function App() {
           : recording
             ? "正在记录"
             : "准备就绪";
+  const recordingSafetyText =
+    recording
+      ? wakeLockState === "active"
+        ? "屏幕保持唤醒"
+        : "请保持页面打开"
+      : "";
   const quickRecordLabel = busy ? "处理中" : recording ? "停止记录" : "开始记录";
   const quickRecordHint = busy ? "请稍候" : recording ? formatSeconds(elapsed) : "随时记录";
 
@@ -1337,7 +1412,7 @@ export function App() {
 
         <div className="record-state">
           {busy ? <Loader2 className="spin" size={18} /> : recording ? <Waves size={18} /> : <Check size={18} />}
-          <span>{busyText}</span>
+          <span>{recordingSafetyText ? `${busyText} · ${recordingSafetyText}` : busyText}</span>
         </div>
       </section>
 
@@ -1493,6 +1568,7 @@ export function App() {
                 data-day-key={day.key}
                 aria-label={`${day.key}${detail ? ` ${detail}` : ""}`}
                 aria-pressed={isSelected}
+                aria-current={isSelected ? "date" : undefined}
                 className={`calendar-day ${hasContent ? "has-content" : ""} ${isSelected ? "active" : ""} ${isToday ? "today" : ""}`}
                 style={day.offset ? { gridColumnStart: day.offset + 1 } : undefined}
                 onClick={() => selectDay(day.key, { scrollToContent: true })}

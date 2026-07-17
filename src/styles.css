@@ -189,6 +189,12 @@ button:disabled {
   font-size: 14px;
 }
 
+.record-state span {
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .spin {
   animation: spin 0.8s linear infinite;
 }
