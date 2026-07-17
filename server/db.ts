@@ -5,6 +5,7 @@ import { dayKey, monthKey, weekKey } from "./time";
 import type {
   AudioAsset,
   CardRelation,
+  CardRelationView,
   CardSearchResult,
   CompletedActionMap,
   Period,
@@ -1235,29 +1236,37 @@ export function setActionItemCompleted(
   };
 }
 
-export function getRelationsForCards(handle: DbHandle, cardIds: string[]): Array<{
-  fromTitle: string;
-  toTitle: string;
-  relationType: string;
-  rationale: string;
-}> {
+export function getRelationsForCards(handle: DbHandle, cardIds: string[]): CardRelationView[] {
   if (!cardIds.length) return [];
   const placeholders = cardIds.map(() => "?").join(",");
   const rows = handle.db
     .prepare(
-      `SELECT f.title AS from_title, t.title AS to_title, r.relation_type, r.rationale
+      `SELECT r.id,
+              r.from_card_id,
+              r.to_card_id,
+              f.title AS from_title,
+              t.title AS to_title,
+              r.relation_type,
+              r.confidence,
+              r.rationale,
+              r.created_at
        FROM card_relations r
        JOIN thought_cards f ON f.id = r.from_card_id
        JOIN thought_cards t ON t.id = r.to_card_id
        WHERE r.from_card_id IN (${placeholders}) OR r.to_card_id IN (${placeholders})
-       ORDER BY r.created_at ASC`
+       ORDER BY r.created_at ASC, r.id ASC`
     )
     .all(...cardIds, ...cardIds) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
+    id: String(row.id),
+    fromCardId: String(row.from_card_id),
+    toCardId: String(row.to_card_id),
     fromTitle: String(row.from_title),
     toTitle: String(row.to_title),
-    relationType: String(row.relation_type),
-    rationale: String(row.rationale)
+    relationType: String(row.relation_type) as CardRelation["relationType"],
+    confidence: Number(row.confidence),
+    rationale: String(row.rationale),
+    createdAt: String(row.created_at)
   }));
 }
 

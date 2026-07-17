@@ -1483,6 +1483,35 @@ audio {
   line-height: 1.45;
 }
 
+.relation-list {
+  display: grid;
+  gap: 6px;
+}
+
+.relation-item {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.relation-item span {
+  color: #263244;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.relation-item small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;

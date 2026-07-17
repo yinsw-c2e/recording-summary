@@ -60,6 +60,7 @@ import {
   updateThoughtCard,
   uploadRecording,
   type Period,
+  type CardRelationView,
   type CardSearchResult,
   type MonthDayOverview,
   type RecordingListItem,
@@ -101,6 +102,17 @@ const typeLabels: Record<string, string> = {
   reflection: "反思",
   daily_note: "记录",
   uncertain: "待确认"
+};
+
+const relationLabels: Record<string, string> = {
+  continuation: "延续",
+  duplicate: "重复",
+  refinement: "细化",
+  contradiction: "冲突",
+  task_followup: "任务跟进",
+  knowledge_link: "知识关联",
+  project_link: "项目关联",
+  uncertain: "不确定"
 };
 
 type SpeechSource = "summary" | "focus" | "review_due";
@@ -431,6 +443,7 @@ export function App() {
   const selectedKey = activeData?.keys[selectedPeriod] ?? "";
   const cards = activeData?.stats.cards ?? [];
   const recordings = activeData?.recordings ?? [];
+  const relations = activeData?.relations ?? [];
   const worker = today?.worker;
   const workerOnline = worker?.workers.some((item) => Date.now() - new Date(item.lastHeartbeatAt).getTime() < 60_000) ?? false;
   const todayDayKey = todayDayKeyValue;
@@ -494,6 +507,14 @@ export function App() {
               : cards.filter((card) => card.type === cardTypeFilter),
     [cards, cardTypeFilter]
   );
+  const relationsByCard = useMemo(() => {
+    const grouped = new Map<string, CardRelationView[]>();
+    relations.forEach((relation) => {
+      grouped.set(relation.fromCardId, [...(grouped.get(relation.fromCardId) ?? []), relation]);
+      grouped.set(relation.toCardId, [...(grouped.get(relation.toCardId) ?? []), relation]);
+    });
+    return grouped;
+  }, [relations]);
   const recordingFilterCounts = useMemo(() => countRecordingFilters(recordings), [recordings]);
   const filteredRecordings = useMemo(
     () => recordings.filter((item) => matchesRecordingFilter(item, recordingFilter)),
@@ -2005,6 +2026,7 @@ export function App() {
               <ThoughtCardItem
                 key={card.id}
                 card={card}
+                relations={relationsByCard.get(card.id) ?? []}
                 copied={copiedSource === `card:${card.id}`}
                 sourceCopied={copiedSource === `card-source:${card.id}`}
                 onCopy={() => copyText(cardMarkdown(card, completedActions), `card:${card.id}`)}
@@ -2039,6 +2061,7 @@ export function App() {
 
 function ThoughtCardItem({
   card,
+  relations,
   copied,
   sourceCopied,
   onCopy,
@@ -2059,6 +2082,7 @@ function ThoughtCardItem({
   onToggleSource
 }: {
   card: ThoughtCard;
+  relations: CardRelationView[];
   copied: boolean;
   sourceCopied: boolean;
   onCopy: () => void;
@@ -2161,6 +2185,31 @@ function ThoughtCardItem({
             <div className="detail-list">
               {card.actions.length ? card.actions.map((action) => <span key={action}>{action}</span>) : <span>暂无行动项</span>}
             </div>
+          </div>
+          <div>
+            <strong>相关卡片</strong>
+            {relations.length ? (
+              <div className="relation-list">
+                {relations.map((relation) => {
+                  const isOutgoing = relation.fromCardId === card.id;
+                  const peerTitle = isOutgoing ? relation.toTitle : relation.fromTitle;
+                  return (
+                    <div className="relation-item" key={relation.id}>
+                      <span>
+                        {relationLabels[relation.relationType] ?? relation.relationType}
+                        {isOutgoing ? " → " : " ← "}
+                        {peerTitle}
+                      </span>
+                      <small>{Math.round(relation.confidence * 100)}% · {relation.rationale}</small>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="detail-list">
+                <span>暂无相关卡片</span>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

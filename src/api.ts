@@ -15,6 +15,18 @@ export interface ThoughtCard {
   reviewed: boolean;
 }
 
+export interface CardRelationView {
+  id: string;
+  fromCardId: string;
+  toCardId: string;
+  fromTitle: string;
+  toTitle: string;
+  relationType: string;
+  confidence: number;
+  rationale: string;
+  createdAt: string;
+}
+
 export interface CardSearchResult extends ThoughtCard {
   dayKey: string;
   weekKey: string;
@@ -115,6 +127,7 @@ export interface TodayResponse {
   };
   recordings: RecordingListItem[];
   summaries: Record<Period, SummaryArtifact | null>;
+  relations: CardRelationView[];
   provider: string;
   sttMode: string;
   worker: WorkerSnapshot;

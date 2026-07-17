@@ -136,6 +136,11 @@ export interface CardRelation {
   createdAt: string;
 }
 
+export interface CardRelationView extends CardRelation {
+  fromTitle: string;
+  toTitle: string;
+}
+
 export interface SummaryArtifact {
   id: string;
   period: Period;

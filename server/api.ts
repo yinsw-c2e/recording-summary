@@ -19,6 +19,7 @@ import {
   getAudioAsset,
   getLatestSummary,
   getRecording,
+  getRelationsForCards,
   getTranscriptForRecording,
   getTranscriptionJob,
   getTodayStats,
@@ -459,13 +460,14 @@ export function buildServer(handle: DbHandle = openDb()) {
       month: monthKey(now)
     };
     const stats = getTodayStats(handle, keys.day);
+    const relations = getRelationsForCards(handle, stats.cards.map((card) => card.id));
     const recordings = listRecordingsForDay(handle, keys.day);
     const summaries = {
       day: getLatestSummary(handle, "day", keys.day),
       week: getLatestSummary(handle, "week", keys.week),
       month: getLatestSummary(handle, "month", keys.month)
     };
-    return { keys, stats, recordings, summaries, provider: llm.name, sttMode: config.sttMode, worker: getWorkerSnapshot(handle) };
+    return { keys, stats, recordings, summaries, relations, provider: llm.name, sttMode: config.sttMode, worker: getWorkerSnapshot(handle) };
   });
 
   app.get("/api/day", async (request, reply) => {
@@ -478,13 +480,14 @@ export function buildServer(handle: DbHandle = openDb()) {
       month: monthKey(date)
     };
     const stats = getTodayStats(handle, keys.day);
+    const relations = getRelationsForCards(handle, stats.cards.map((card) => card.id));
     const recordings = listRecordingsForDay(handle, keys.day);
     const summaries = {
       day: getLatestSummary(handle, "day", keys.day),
       week: getLatestSummary(handle, "week", keys.week),
       month: getLatestSummary(handle, "month", keys.month)
     };
-    return { keys, stats, recordings, summaries, provider: llm.name, sttMode: config.sttMode, worker: getWorkerSnapshot(handle) };
+    return { keys, stats, recordings, summaries, relations, provider: llm.name, sttMode: config.sttMode, worker: getWorkerSnapshot(handle) };
   });
 
   app.get("/api/month", async (request, reply) => {

@@ -22,7 +22,12 @@ describe("organizing workflow", () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });
 
-    const [{ openDb, createAudioAsset, createRecording, upsertTranscript, countAll }, { MockLLMProvider }, workflows, { dayKey }] =
+    const [
+      { openDb, createAudioAsset, createRecording, upsertTranscript, countAll, getCardsForPeriod, getRelationsForCards },
+      { MockLLMProvider },
+      workflows,
+      { dayKey }
+    ] =
       await Promise.all([
         import("../server/db"),
         import("../server/providers/mockLlm"),
@@ -90,8 +95,21 @@ describe("organizing workflow", () => {
     const second = await workflows.organizeNew(handle, llm);
     expect(second.processed).toBe(1);
     expect(second.relationsCreated).toBeGreaterThan(0);
+    const today = dayKey(new Date());
+    const cards = getCardsForPeriod(handle, "day", today);
+    const relations = getRelationsForCards(handle, cards.map((card) => card.id));
+    expect(relations[0]).toMatchObject({
+      fromCardId: expect.any(String),
+      toCardId: expect.any(String),
+      fromTitle: expect.any(String),
+      toTitle: expect.any(String),
+      relationType: expect.any(String),
+      confidence: expect.any(Number),
+      rationale: expect.any(String),
+      createdAt: expect.any(String)
+    });
 
-    const summary = await workflows.regenerateSummary(handle, llm, tts, "day", dayKey(new Date()));
+    const summary = await workflows.regenerateSummary(handle, llm, tts, "day", today);
     expect(summary.period).toBe("day");
     expect(summary.audioAssetId).toBeNull();
     expect(summary.version).toBe(1);
