@@ -81,6 +81,7 @@ import {
   type CompletedActions,
   type FocusActionItem
 } from "./focusArtifacts";
+import { normalizeDayParam, rawDayParamFromSearch, searchWithDayParam } from "./dateUrl";
 
 const periodLabels: Record<Period, string> = {
   day: "日",
@@ -164,6 +165,19 @@ function daysForMonth(month: string): Array<{ key: string; day: number; offset: 
     day: index + 1,
     offset: index === 0 ? offset : 0
   }));
+}
+
+function readRawUrlDayParam(): string {
+  if (typeof window === "undefined") return "";
+  return rawDayParamFromSearch(window.location.search);
+}
+
+function writeUrlDayParam(day: string, today: string, mode: "push" | "replace" = "push") {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.search = searchWithDayParam(url.search, day, today);
+  if (url.href === window.location.href) return;
+  window.history[mode === "replace" ? "replaceState" : "pushState"]({ day }, "", url);
 }
 
 function formatSeconds(value: number): string {
@@ -535,9 +549,14 @@ export function App() {
     }, 0);
   }
 
-  function selectDay(day: string, options: { scrollToContent?: boolean } = {}) {
-    setSelectedDayKey(day);
-    setVisibleMonth(monthFromDay(day));
+  function selectDay(
+    day: string,
+    options: { scrollToContent?: boolean; updateUrl?: boolean; replaceUrl?: boolean; todayForUrl?: string } = {}
+  ) {
+    const todayForUrl = options.todayForUrl ?? todayDayKeyValue;
+    const nextDay = normalizeDayParam(day, todayForUrl);
+    setSelectedDayKey(nextDay);
+    setVisibleMonth(monthFromDay(nextDay));
     setSelectedPeriod("day");
     setCardTypeFilter("all");
     setRecordingFilter("all");
@@ -548,6 +567,9 @@ export function App() {
     setEditingCardId("");
     setOpenCardSourceId("");
     setCardSourceLoadingId("");
+    if (options.updateUrl !== false) {
+      writeUrlDayParam(nextDay, todayForUrl, options.replaceUrl ? "replace" : "push");
+    }
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -589,9 +611,14 @@ export function App() {
         if (status.authenticated) {
           const next = await refresh();
           if (next) {
-            setSelectedDayKey(next.keys.day);
-            setSelectedDayData(next);
-            setVisibleMonth(next.keys.month);
+            const requestedDay = readRawUrlDayParam();
+            const targetDay = normalizeDayParam(requestedDay, next.keys.day);
+            selectDay(targetDay, {
+              updateUrl: Boolean(requestedDay),
+              replaceUrl: true,
+              todayForUrl: next.keys.day
+            });
+            setSelectedDayData(targetDay === next.keys.day ? next : null);
           }
         }
       })
@@ -618,6 +645,19 @@ export function App() {
     if (!authenticated || !visibleMonth) return;
     refreshVisibleMonth(visibleMonth).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [authenticated, visibleMonth]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const handlePopState = () => {
+      const requestedDay = readRawUrlDayParam();
+      selectDay(normalizeDayParam(requestedDay, todayDayKeyValue), {
+        updateUrl: Boolean(requestedDay),
+        replaceUrl: true
+      });
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [authenticated, todayDayKeyValue]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -698,9 +738,8 @@ export function App() {
         setLastRecordingId(result.recording.id);
         const next = await refresh();
         if (next) {
-          setSelectedDayKey(next.keys.day);
+          selectDay(next.keys.day, { todayForUrl: next.keys.day });
           setSelectedDayData(next);
-          setVisibleMonth(next.keys.month);
           await refreshVisibleMonth(next.keys.month);
         }
         if (["transcription_queued", "transcribing", "transcript_pending"].includes(result.recording.status)) {
@@ -918,9 +957,14 @@ export function App() {
       setAuthenticated(true);
       const next = await refresh();
       if (next) {
-        setSelectedDayKey(next.keys.day);
-        setSelectedDayData(next);
-        setVisibleMonth(next.keys.month);
+        const requestedDay = readRawUrlDayParam();
+        const targetDay = normalizeDayParam(requestedDay, next.keys.day);
+        selectDay(targetDay, {
+          updateUrl: Boolean(requestedDay),
+          replaceUrl: true,
+          todayForUrl: next.keys.day
+        });
+        setSelectedDayData(targetDay === next.keys.day ? next : null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
