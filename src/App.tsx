@@ -96,6 +96,7 @@ import {
   type FocusActionItem
 } from "./focusArtifacts";
 import { normalizeDayParam, rawDayParamFromSearch, searchWithDayParam } from "./dateUrl";
+import { selectNextStep } from "./nextStep";
 import {
   canToggleSpeechPause,
   speechPauseButtonLabel,
@@ -585,6 +586,15 @@ export function App() {
     () => orderedActionItems.filter((item) => matchesActionItemFilter(item, completedActions, actionFilter)),
     [actionFilter, completedActions, orderedActionItems]
   );
+  const openActionCount = actionItems.length - completedActionCount;
+  const nextStepKind = selectNextStep({
+    reviewRecordingCount: recordingFilterCounts.needs_review,
+    openRecordingCount: recordingFilterCounts.open,
+    reviewDueCount: reviewDueCards.length,
+    openActionCount,
+    cardCount: cards.length,
+    recordingCount: recordings.length
+  });
   const focusListeningScript = useMemo(
     () =>
       buildFocusListeningScript({
@@ -720,6 +730,27 @@ export function App() {
 
   function jumpToSearchResult(result: CardSearchResult) {
     selectDay(result.dayKey, { targetCardId: result.id });
+  }
+
+  function scrollToPanel(selector: string) {
+    window.setTimeout(() => {
+      document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
+  function jumpToRecordings(filter: RecordingFilter = "all") {
+    setRecordingFilter(filter);
+    scrollToPanel(".recordings-panel");
+  }
+
+  function jumpToCards(filter = "all") {
+    setCardTypeFilter(filter);
+    scrollToPanel(".cards-panel");
+  }
+
+  function jumpToActions() {
+    setActionFilter("open");
+    scrollToPanel(".focus-panel");
   }
 
   async function toggleActionDone(item: FocusActionItem) {
@@ -1514,6 +1545,116 @@ export function App() {
         </div>
       ) : null}
 
+      <section className={`next-step-panel ${nextStepKind}`} aria-label="下一步建议">
+        {nextStepKind === "recording_review" ? (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>{recordingFilterCounts.needs_review} 段录音需要确认</strong>
+              <small>先处理异常、失败或无有效内容的录音，避免错误内容继续影响总结。</small>
+            </div>
+            <div className="next-step-actions">
+              <button type="button" className="primary" onClick={() => jumpToRecordings("needs_review")}>
+                <AlertCircle size={16} />
+                查看异常
+              </button>
+              <button type="button" onClick={() => jumpToRecordings("all")}>
+                <FileAudio size={16} />
+                全部录音
+              </button>
+            </div>
+          </>
+        ) : nextStepKind === "recording_open" ? (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>{recordingFilterCounts.open} 段录音还在处理</strong>
+              <small>查看等待 Mac、转写中或 AI 整理中的录音状态；处理期间可以继续录音。</small>
+            </div>
+            <div className="next-step-actions">
+              <button type="button" className="primary" onClick={() => jumpToRecordings("open")}>
+                <Clock size={16} />
+                查看队列
+              </button>
+            </div>
+          </>
+        ) : nextStepKind === "review_due" ? (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>{reviewDueCards.length} 张卡片待复习</strong>
+              <small>先朗读待复习内容，听完后可以逐条或一键标记已复习。</small>
+            </div>
+            <div className="next-step-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={!reviewDueListeningScript || !("speechSynthesis" in window)}
+                onClick={speechSource === "review_due" ? stopSpeaking : () => speakReviewDue()}
+              >
+                <Volume2 size={16} />
+                {speechStartButtonLabel("review_due", speechPlaybackState, speechRate)}
+              </button>
+              <button type="button" onClick={() => jumpToCards("review_due")}>
+                <CheckCircle size={16} />
+                查看卡片
+              </button>
+            </div>
+          </>
+        ) : nextStepKind === "action" ? (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>{openActionCount} 个行动项未完成</strong>
+              <small>优先处理从语音里提取出的明确行动，完成后可直接打勾。</small>
+            </div>
+            <div className="next-step-actions">
+              <button type="button" className="primary" onClick={jumpToActions}>
+                <ListChecks size={16} />
+                查看行动项
+              </button>
+            </div>
+          </>
+        ) : nextStepKind === "ready" ? (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>这一天已经整理好</strong>
+              <small>可以朗读重点复习，也可以复制这一天的完整归档。</small>
+            </div>
+            <div className="next-step-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={!focusListeningScript || !("speechSynthesis" in window)}
+                onClick={speechSource === "focus" ? stopSpeaking : () => speakFocus()}
+              >
+                <Volume2 size={16} />
+                {speechStartButtonLabel("focus", speechPlaybackState, speechRate)}
+              </button>
+              <button type="button" disabled={!hasDayArchiveContent} onClick={() => copyText(dayArchiveMarkdown, "day-archive")}>
+                {copiedSource === "day-archive" ? <Check size={16} /> : <Clipboard size={16} />}
+                {copiedSource === "day-archive" ? "已复制" : "复制归档"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>{isSelectedToday ? "今天还没有记录" : "这一天没有内容"}</strong>
+              <small>{isSelectedToday ? "直接按上方大按钮开始录音。" : "可以切换到其他日期，或回到今天继续记录。"}</small>
+            </div>
+            <div className="next-step-actions">
+              <button type="button" className="primary" disabled={isSelectedToday} onClick={jumpToToday}>
+                <CalendarDays size={16} />
+                回到今天
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+
       <section className="search-panel">
         <div className="section-title">
           <Search size={18} />
@@ -1815,10 +1956,7 @@ export function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setCardTypeFilter("review_due");
-                    document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
+                  onClick={() => jumpToCards("review_due")}
                 >
                   查看全部
                 </button>
@@ -1852,10 +1990,7 @@ export function App() {
               <strong>已标重点</strong>
               <button
                 type="button"
-                onClick={() => {
-                  setCardTypeFilter("starred");
-                  document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
+                onClick={() => jumpToCards("starred")}
               >
                 查看全部
               </button>
