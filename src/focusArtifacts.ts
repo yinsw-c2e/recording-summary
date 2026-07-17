@@ -11,6 +11,14 @@ export interface FocusActionItem {
   type: string;
 }
 
+export interface DayArchiveRecording {
+  time: string;
+  duration: string;
+  status: string;
+  cardCount: number;
+  note?: string;
+}
+
 export function markdownList(items: string[], emptyText: string): string[] {
   return items.length ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
 }
@@ -63,6 +71,84 @@ export function buildFocusListeningScript(input: {
     });
     if (cards.length > 6) lines.push(`还有 ${cards.length - 6} 张卡片。`);
   }
+
+  return lines.join("\n");
+}
+
+export function buildDayArchiveMarkdown(input: {
+  day: string;
+  summaryMarkdown: string;
+  cards: ThoughtCard[];
+  recordings: DayArchiveRecording[];
+  actionItems: FocusActionItem[];
+  completedActions: CompletedActions;
+  typeLabels: Record<string, string>;
+}): string {
+  const { actionItems, cards, completedActions, day, recordings, summaryMarkdown, typeLabels } = input;
+  const starredCards = cards.filter((card) => card.starred);
+  const reviewDueCards = cards.filter((card) => !card.reviewed);
+  const completedActionCount = actionItems.filter((item) => completedActions[item.id]).length;
+  const lines = [
+    `# ${day} 日档案`,
+    "",
+    "## 概览",
+    `- 录音：${recordings.length}`,
+    `- 卡片：${cards.length}`,
+    `- 已标重点：${starredCards.length}`,
+    `- 待复习：${reviewDueCards.length}`,
+    `- 行动项：${completedActionCount}/${actionItems.length}`,
+    "",
+    "## 日总结",
+    summaryMarkdown.trim() || "暂无总结内容",
+    "",
+    "## 录音",
+    ...markdownList(
+      recordings.map((recording) => {
+        const note = recording.note ? `；${recording.note}` : "";
+        return `${recording.time}｜${recording.duration}｜${recording.status}｜${recording.cardCount} 张卡片${note}`;
+      }),
+      "暂无录音"
+    ),
+    "",
+    "## 行动项",
+    ...markdownList(
+      actionItems.map((item) => `[${completedActions[item.id] ? "x" : " "}] ${item.action}（${typeLabels[item.type] ?? item.type}：${item.title}）`),
+      "暂无明确行动项"
+    ),
+    "",
+    "## 卡片"
+  ];
+
+  if (!cards.length) {
+    lines.push("- 暂无卡片");
+    return lines.join("\n");
+  }
+
+  cards.forEach((card, index) => {
+    lines.push(
+      "",
+      `### ${index + 1}. ${card.title}`,
+      "",
+      `- 类型：${typeLabels[card.type] ?? card.type}`,
+      `- 重点：${card.starred ? "是" : "否"}`,
+      `- 已复习：${card.reviewed ? "是" : "否"}`,
+      `- 置信度：${Math.round(card.confidence * 100)}%`,
+      `- 来源录音：${card.sourceRecordingId}`,
+      `- 来源片段：${card.sourceTextRange}`,
+      "",
+      "#### 摘要",
+      card.summary,
+      "",
+      "#### 关键点",
+      ...markdownList(card.keyPoints, "暂无关键点"),
+      "",
+      "#### 行动项",
+      ...markdownList(card.actions.map((action, actionIndex) => `[${completedActions[`${card.id}-${actionIndex}`] ? "x" : " "}] ${action}`), "暂无行动项"),
+      "",
+      "#### 标签",
+      ...markdownList(card.tags, "暂无标签")
+    );
+  });
 
   return lines.join("\n");
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDayArchiveMarkdown,
   buildFocusExportMarkdown,
   buildFocusListeningScript,
   buildReviewDueListeningScript,
@@ -85,6 +86,57 @@ describe("focus artifacts", () => {
     expect(markdown).toContain("- 待复习：1");
     expect(markdown).toContain("## 已标重点");
     expect(markdown).toContain("- 知识｜重点知识：需要反复听的知识点。");
+  });
+
+  it("builds a complete day archive markdown with summary, recordings, actions, and cards", () => {
+    const projectCard = card({
+      id: "project-card",
+      type: "project_idea",
+      title: "手机端日档案",
+      summary: "把当天内容整理成一份完整 Markdown。",
+      keyPoints: ["导出当前选中的日期", "包含总结和卡片"],
+      actions: ["在手机上验证复制和下载"],
+      tags: ["导出", "H5"],
+      confidence: 0.82,
+      starred: true
+    });
+    const actionItems: FocusActionItem[] = [
+      {
+        id: "project-card-0",
+        cardId: "project-card",
+        actionIndex: 0,
+        action: "在手机上验证复制和下载",
+        title: projectCard.title,
+        type: projectCard.type
+      }
+    ];
+
+    const markdown = buildDayArchiveMarkdown({
+      day: "2026-07-18",
+      summaryMarkdown: "# 2026-07-18 日总结\n\n今天完成导出能力。",
+      cards: [projectCard],
+      recordings: [
+        {
+          time: "22:30:01",
+          duration: "00:18",
+          status: "已整理",
+          cardCount: 1,
+          note: "已生成卡片并参与总结。"
+        }
+      ],
+      actionItems,
+      completedActions: { "project-card-0": true },
+      typeLabels: { project_idea: "项目想法" }
+    });
+
+    expect(markdown).toContain("# 2026-07-18 日档案");
+    expect(markdown).toContain("- 录音：1");
+    expect(markdown).toContain("# 2026-07-18 日总结");
+    expect(markdown).toContain("- 22:30:01｜00:18｜已整理｜1 张卡片；已生成卡片并参与总结。");
+    expect(markdown).toContain("- [x] 在手机上验证复制和下载（项目想法：手机端日档案）");
+    expect(markdown).toContain("### 1. 手机端日档案");
+    expect(markdown).toContain("- 置信度：82%");
+    expect(markdown).toContain("- 导出当前选中的日期");
   });
 
   it("builds a listening script only from unreviewed cards and reads starred cards first", () => {

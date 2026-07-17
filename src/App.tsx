@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock,
   Clipboard,
+  Download,
   Trash2,
   FileAudio,
   FileText,
@@ -75,6 +76,7 @@ import {
   type RecordingFilter
 } from "./recordingFilters";
 import {
+  buildDayArchiveMarkdown,
   buildFocusExportMarkdown,
   buildFocusListeningScript,
   buildReviewDueListeningScript,
@@ -102,7 +104,7 @@ const typeLabels: Record<string, string> = {
 };
 
 type SpeechSource = "summary" | "focus" | "review_due";
-type CopySource = "focus" | "summary" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
+type CopySource = "focus" | "summary" | "day-archive" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type CardDraft = {
   type: string;
@@ -179,6 +181,19 @@ function writeUrlDayParam(day: string, today: string, mode: "push" | "replace" =
   url.search = searchWithDayParam(url.search, day, today);
   if (url.href === window.location.href) return;
   window.history[mode === "replace" ? "replaceState" : "pushState"]({ day }, "", url);
+}
+
+function downloadTextFile(filename: string, text: string) {
+  if (typeof window === "undefined" || !text.trim()) return;
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
 }
 
 function formatSeconds(value: number): string {
@@ -353,6 +368,7 @@ export function App() {
   const [error, setError] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState<Period>("day");
   const [summaryMarkdown, setSummaryMarkdown] = useState("");
+  const [daySummaryMarkdown, setDaySummaryMarkdown] = useState("");
   const [manualTranscript, setManualTranscript] = useState("");
   const [lastRecordingId, setLastRecordingId] = useState("");
   const [authChecked, setAuthChecked] = useState(false);
@@ -411,10 +427,12 @@ export function App() {
     [activeData]
   );
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
+  const selectedDaySummary: SummaryArtifact | null = activeData?.summaries.day ?? null;
   const selectedKey = activeData?.keys[selectedPeriod] ?? "";
   const cards = activeData?.stats.cards ?? [];
   const recordings = activeData?.recordings ?? [];
   const worker = today?.worker;
+  const workerOnline = worker?.workers.some((item) => Date.now() - new Date(item.lastHeartbeatAt).getTime() < 60_000) ?? false;
   const todayDayKey = todayDayKeyValue;
   const overviewByDay = useMemo(() => new Map(monthOverview.map((item) => [item.dayKey, item])), [monthOverview]);
   const selectedDayOverview = overviewByDay.get(activeDay);
@@ -525,6 +543,26 @@ export function App() {
       }),
     [actionItems, activeDay, cards, completedActionCount, completedActions, reviewCards]
   );
+  const dayArchiveMarkdown = useMemo(
+    () =>
+      buildDayArchiveMarkdown({
+        day: activeDay,
+        summaryMarkdown: daySummaryMarkdown,
+        cards,
+        recordings: recordings.map((item) => ({
+          time: formatDateTime(item.createdAt),
+          duration: item.duration === null ? "--:--" : formatSeconds(item.duration),
+          status: statusLabel(item.status),
+          cardCount: item.cardCount,
+          note: item.error || statusHelp(item.status, workerOnline)
+        })),
+        actionItems,
+        completedActions,
+        typeLabels
+      }),
+    [actionItems, activeDay, cards, completedActions, daySummaryMarkdown, recordings, workerOnline]
+  );
+  const hasDayArchiveContent = Boolean(daySummaryMarkdown.trim() || recordings.length || cards.length);
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -723,6 +761,16 @@ export function App() {
       .then(setSummaryMarkdown)
       .catch(() => setSummaryMarkdown(""));
   }, [selectedSummary?.id]);
+
+  useEffect(() => {
+    if (!selectedDaySummary) {
+      setDaySummaryMarkdown("");
+      return;
+    }
+    getSummaryMarkdown(selectedDaySummary.id)
+      .then(setDaySummaryMarkdown)
+      .catch(() => setDaySummaryMarkdown(""));
+  }, [selectedDaySummary?.id]);
 
   useEffect(() => {
     if (!recording) return;
@@ -1109,7 +1157,6 @@ export function App() {
     return `今日 ${today.stats.recordings} 段录音 · ${today.stats.pending} 段待处理 · ${today.stats.organized} 张卡片`;
   }, [today]);
   const providerLabel = today?.provider === "mock" ? "本地测试模式" : today?.provider ?? "local";
-  const workerOnline = worker?.workers.some((item) => Date.now() - new Date(item.lastHeartbeatAt).getTime() < 60_000) ?? false;
   const recordingPipelineHint = useMemo(() => {
     const queued = recordings.filter((item) => ["uploaded", "transcription_queued", "transcript_pending"].includes(item.status)).length;
     const transcribing = recordings.filter((item) => item.status === "transcribing").length;
@@ -1826,6 +1873,26 @@ export function App() {
             >
               {copiedSource === "summary" ? <Check size={16} /> : <Clipboard size={16} />}
               {copiedSource === "summary" ? "已复制" : "复制总结"}
+            </button>
+          </div>
+          <div className="archive-actions" aria-label="日档案操作">
+            <button
+              className="copy-button"
+              type="button"
+              disabled={!hasDayArchiveContent}
+              onClick={() => copyText(dayArchiveMarkdown, "day-archive")}
+            >
+              {copiedSource === "day-archive" ? <Check size={16} /> : <Clipboard size={16} />}
+              {copiedSource === "day-archive" ? "已复制日档案" : "复制日档案"}
+            </button>
+            <button
+              className="copy-button"
+              type="button"
+              disabled={!hasDayArchiveContent}
+              onClick={() => downloadTextFile(`recording-summary-${activeDay}.md`, dayArchiveMarkdown)}
+            >
+              <Download size={16} />
+              下载MD
             </button>
           </div>
           <pre className="summary-markdown">{summaryMarkdown || "暂无总结内容"}</pre>
