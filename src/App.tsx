@@ -16,7 +16,9 @@ import {
   Loader2,
   LogOut,
   Mic,
+  Pause,
   Pencil,
+  Play,
   Volume2,
   RefreshCw,
   RotateCcw,
@@ -94,6 +96,13 @@ import {
   type FocusActionItem
 } from "./focusArtifacts";
 import { normalizeDayParam, rawDayParamFromSearch, searchWithDayParam } from "./dateUrl";
+import {
+  canToggleSpeechPause,
+  speechPauseButtonLabel,
+  speechStartButtonLabel,
+  speechStatusText,
+  type SpeechSource
+} from "./speechPlayback";
 
 const periodLabels: Record<Period, string> = {
   day: "日",
@@ -123,7 +132,6 @@ const relationLabels: Record<string, string> = {
   uncertain: "不确定"
 };
 
-type SpeechSource = "summary" | "focus" | "review_due";
 type CopySource = "focus" | "summary" | "day-archive" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type WakeLockState = "idle" | "active" | "released" | "unsupported" | "failed";
@@ -406,6 +414,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [speechSource, setSpeechSource] = useState<SpeechSource | null>(null);
+  const [speechPaused, setSpeechPaused] = useState(false);
   const [speechRate, setSpeechRate] = useState(1.5);
   const [copiedSource, setCopiedSource] = useState<CopySource | null>(null);
   const [audioErrors, setAudioErrors] = useState<Record<string, boolean>>({});
@@ -630,6 +639,9 @@ export function App() {
     [actionItems, activeDay, cards, completedActions, daySummaryMarkdown, recordings, workerOnline]
   );
   const hasDayArchiveContent = Boolean(daySummaryMarkdown.trim() || recordings.length || cards.length);
+  const speechPlaybackState = useMemo(() => ({ source: speechSource, paused: speechPaused }), [speechPaused, speechSource]);
+  const speechStatus = useMemo(() => speechStatusText(speechPlaybackState), [speechPlaybackState]);
+  const speechPauseDisabled = !canToggleSpeechPause(speechPlaybackState) || !("speechSynthesis" in window);
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -1212,6 +1224,7 @@ export function App() {
     await logout();
     window.speechSynthesis?.cancel();
     setSpeechSource(null);
+    setSpeechPaused(false);
     setAuthenticated(false);
     setToday(null);
     setSelectedDayData(null);
@@ -1272,12 +1285,19 @@ export function App() {
     utterance.lang = "zh-CN";
     utterance.rate = rate;
     utterance.onend = () => {
-      if (speechRunRef.current === runId) setSpeechSource(null);
+      if (speechRunRef.current === runId) {
+        setSpeechSource(null);
+        setSpeechPaused(false);
+      }
     };
     utterance.onerror = () => {
-      if (speechRunRef.current === runId) setSpeechSource(null);
+      if (speechRunRef.current === runId) {
+        setSpeechSource(null);
+        setSpeechPaused(false);
+      }
     };
     setSpeechSource(source);
+    setSpeechPaused(false);
     window.speechSynthesis.speak(utterance);
   }
 
@@ -1298,6 +1318,7 @@ export function App() {
     setSpeechRate(rate);
     if (speechSource) {
       const currentSource = speechSource;
+      setSpeechPaused(false);
       window.speechSynthesis?.cancel();
       window.setTimeout(() => {
         if (currentSource === "summary") speakSummary(rate);
@@ -1307,10 +1328,22 @@ export function App() {
     }
   }
 
+  function toggleSpeechPause() {
+    if (!speechSource || !("speechSynthesis" in window)) return;
+    if (speechPaused || window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setSpeechPaused(false);
+      return;
+    }
+    window.speechSynthesis.pause();
+    setSpeechPaused(true);
+  }
+
   function stopSpeaking() {
     speechRunRef.current += 1;
     window.speechSynthesis?.cancel();
     setSpeechSource(null);
+    setSpeechPaused(false);
   }
 
   const statusLine = useMemo(() => {
@@ -1735,7 +1768,7 @@ export function App() {
             onClick={speechSource === "focus" ? stopSpeaking : () => speakFocus()}
           >
             <Volume2 size={16} />
-            {speechSource === "focus" ? "停止朗读" : `朗读重点 ${speechRate}x`}
+            {speechStartButtonLabel("focus", speechPlaybackState, speechRate)}
           </button>
           <button
             className="focus-speech review-due-speech"
@@ -1744,8 +1777,17 @@ export function App() {
             onClick={speechSource === "review_due" ? stopSpeaking : () => speakReviewDue()}
           >
             <Volume2 size={16} />
-            {speechSource === "review_due" ? "停止待复习" : `朗读待复习 ${speechRate}x`}
+            {speechStartButtonLabel("review_due", speechPlaybackState, speechRate)}
           </button>
+          <button className="speech-secondary" type="button" disabled={speechPauseDisabled} onClick={toggleSpeechPause}>
+            {speechPaused ? <Play size={16} /> : <Pause size={16} />}
+            {speechPauseButtonLabel(speechPlaybackState)}
+          </button>
+          {speechSource ? (
+            <div className={`speech-status focus-status ${speechPaused ? "paused" : "active"}`} aria-live="polite">
+              {speechStatus}
+            </div>
+          ) : null}
           <button
             className="copy-button"
             type="button"
@@ -2087,14 +2129,23 @@ export function App() {
                 </button>
               ))}
             </div>
-            <button
-              className="speech-main"
-              disabled={!selectedSummary?.listeningScript || !("speechSynthesis" in window)}
-              onClick={speechSource === "summary" ? stopSpeaking : () => speakSummary()}
-            >
-              <Volume2 size={16} />
-              {speechSource === "summary" ? "停止朗读" : `朗读总结 ${speechRate}x`}
-            </button>
+            <div className={`speech-status ${speechSource ? "active" : ""} ${speechPaused ? "paused" : ""}`} aria-live="polite">
+              {speechStatus}
+            </div>
+            <div className="speech-control-row">
+              <button
+                className="speech-main"
+                disabled={!selectedSummary?.listeningScript || !("speechSynthesis" in window)}
+                onClick={speechSource === "summary" ? stopSpeaking : () => speakSummary()}
+              >
+                <Volume2 size={16} />
+                {speechStartButtonLabel("summary", speechPlaybackState, speechRate)}
+              </button>
+              <button className="speech-secondary" type="button" disabled={speechPauseDisabled} onClick={toggleSpeechPause}>
+                {speechPaused ? <Play size={16} /> : <Pause size={16} />}
+                {speechPauseButtonLabel(speechPlaybackState)}
+              </button>
+            </div>
             <button
               className="copy-button"
               type="button"

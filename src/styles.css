@@ -477,6 +477,22 @@ button:disabled {
   color: #1d4ed8;
 }
 
+.speech-secondary {
+  min-width: 0;
+  min-height: 40px;
+  justify-content: center;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #263244;
+  font-weight: 800;
+}
+
+.speech-secondary:disabled {
+  color: #98a2b3;
+  background: #f7f9fb;
+}
+
 .copy-button {
   min-width: 0;
   min-height: 40px;
@@ -1154,6 +1170,41 @@ audio {
 .speech-main {
   width: 100%;
   background: #263244;
+}
+
+.speech-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(104px, 0.38fr);
+  gap: 8px;
+}
+
+.speech-status {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.speech-status.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.speech-status.paused {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.focus-status {
+  min-height: 40px;
 }
 
 .speech-rate {
