@@ -399,7 +399,17 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
 
     const [
-      { openDb, createAudioAsset, createRecording, upsertTranscript, getCardsForPeriod, searchCards, setCardReviewed, setCardStarred },
+      {
+        openDb,
+        createAudioAsset,
+        createRecording,
+        upsertTranscript,
+        getCardsForPeriod,
+        searchCards,
+        setCardReviewed,
+        setCardsReviewed,
+        setCardStarred
+      },
       { MockLLMProvider },
       workflows,
       { dayKey }
@@ -473,6 +483,17 @@ describe("organizing workflow", () => {
 
     const unreviewed = setCardReviewed(handle, starredTarget!.id, false);
     expect(unreviewed?.reviewed).toBe(false);
+
+    const reviewedCards = setCardsReviewed(handle, cardsAfterStar.map((card) => card.id), true);
+    expect(reviewedCards?.map((card) => card.reviewed)).toEqual([true, true]);
+    expect(reviewedCards?.find((card) => card.id === starredTarget!.id)?.starred).toBe(false);
+
+    const missingBatch = setCardsReviewed(handle, [cardsAfterStar[0]!.id, "missing-card"], false);
+    expect(missingBatch).toBeNull();
+    expect(getCardsForPeriod(handle, "day", today).map((card) => card.reviewed)).toEqual([true, true]);
+
+    const clearedCards = setCardsReviewed(handle, cardsAfterStar.map((card) => card.id), false);
+    expect(clearedCards?.map((card) => card.reviewed)).toEqual([false, false]);
 
     handle.db.close();
     await fs.rm(dataDir, { recursive: true, force: true });

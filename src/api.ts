@@ -225,6 +225,14 @@ export function setThoughtCardReviewed(cardId: string, reviewed: boolean): Promi
   });
 }
 
+export function setThoughtCardsReviewed(cardIds: string[], reviewed: boolean): Promise<{ cards: ThoughtCard[] }> {
+  return json("/api/cards/reviewed/bulk", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cardIds, reviewed })
+  });
+}
+
 export function saveTranscriptAndOrganize(recordingId: string, text: string): Promise<ManualTranscriptOrganizeResult> {
   return json(`/api/recordings/${recordingId}/transcript/organize`, {
     method: "POST",

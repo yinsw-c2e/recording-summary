@@ -1140,6 +1140,31 @@ export function setCardReviewed(handle: DbHandle, cardId: string, reviewed: bool
   return getCard(handle, cardId);
 }
 
+export function setCardsReviewed(handle: DbHandle, cardIds: string[], reviewed: boolean): ThoughtCard[] | null {
+  const uniqueIds = Array.from(new Set(cardIds.map((id) => id.trim()).filter(Boolean)));
+  if (!uniqueIds.length) return [];
+  const existingCards = uniqueIds.map((id) => getCard(handle, id));
+  if (existingCards.some((card) => !card)) return null;
+
+  const apply = handle.db.transaction(() => {
+    if (reviewed) {
+      const stamp = now();
+      const statement = handle.db.prepare(
+        `INSERT INTO card_review_marks (card_id, reviewed_at)
+         VALUES (?, ?)
+         ON CONFLICT(card_id) DO UPDATE SET reviewed_at = excluded.reviewed_at`
+      );
+      uniqueIds.forEach((id) => statement.run(id, stamp));
+    } else {
+      const statement = handle.db.prepare("DELETE FROM card_review_marks WHERE card_id = ?");
+      uniqueIds.forEach((id) => statement.run(id));
+    }
+  });
+
+  apply();
+  return uniqueIds.map((id) => getCard(handle, id)).filter((card): card is ThoughtCard => Boolean(card));
+}
+
 export function getRelationsForCards(handle: DbHandle, cardIds: string[]): Array<{
   fromTitle: string;
   toTitle: string;

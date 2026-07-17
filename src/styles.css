@@ -509,6 +509,13 @@ button:disabled {
   align-items: center;
 }
 
+.focus-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .focus-block-head.with-action button {
   min-height: 30px;
   padding: 0 10px;

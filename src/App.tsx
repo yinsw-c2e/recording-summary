@@ -53,6 +53,7 @@ import {
   searchCards,
   saveTranscriptAndOrganize,
   setThoughtCardReviewed,
+  setThoughtCardsReviewed,
   setThoughtCardStarred,
   updateThoughtCard,
   uploadRecording,
@@ -873,6 +874,15 @@ export function App() {
     });
   }
 
+  async function markReviewDueCardsReviewed() {
+    const ids = reviewDueCards.map((card) => card.id);
+    if (!ids.length) return;
+    await runAction("card-review-all", async () => {
+      if (speechSource === "review_due") stopSpeaking();
+      await setThoughtCardsReviewed(ids, true);
+    });
+  }
+
   async function toggleCardSource(card: ThoughtCard) {
     if (openCardSourceId === card.id) {
       setOpenCardSourceId("");
@@ -1396,15 +1406,20 @@ export function App() {
           <div className="focus-block review-due-focus">
             <div className="focus-block-head with-action">
               <strong>待复习</strong>
-              <button
-                type="button"
-                onClick={() => {
-                  setCardTypeFilter("review_due");
-                  document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              >
-                查看全部
-              </button>
+              <div className="focus-block-actions">
+                <button type="button" disabled={busy !== null} onClick={markReviewDueCardsReviewed}>
+                  全部已复习
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCardTypeFilter("review_due");
+                    document.querySelector(".cards-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
+                  查看全部
+                </button>
+              </div>
             </div>
             <div className="review-due-list">
               {reviewDueCards.slice(0, 3).map((card) => (

@@ -31,6 +31,7 @@ import {
   requeueTranscriptionJob,
   searchCards,
   setCardReviewed,
+  setCardsReviewed,
   setCardStarred,
   upsertWorkerHeartbeat,
   upsertTranscript,
@@ -311,6 +312,18 @@ export function buildServer(handle: DbHandle = openDb()) {
     const card = setCardReviewed(handle, id, body.reviewed);
     if (!card) return reply.code(404).send({ error: "card not found" });
     return { card };
+  });
+
+  app.patch("/api/cards/reviewed/bulk", async (request, reply) => {
+    const body = request.body as { cardIds?: unknown; reviewed?: unknown };
+    if (!Array.isArray(body.cardIds) || !body.cardIds.length || !body.cardIds.every((id) => typeof id === "string" && id.trim())) {
+      return reply.code(400).send({ error: "cardIds must be a non-empty string array" });
+    }
+    if (body.cardIds.length > 200) return reply.code(400).send({ error: "cardIds cannot exceed 200" });
+    if (typeof body.reviewed !== "boolean") return reply.code(400).send({ error: "reviewed must be boolean" });
+    const cards = setCardsReviewed(handle, body.cardIds, body.reviewed);
+    if (!cards) return reply.code(404).send({ error: "one or more cards not found" });
+    return { cards };
   });
 
   app.post("/api/recordings/:id/transcript/organize", async (request, reply) => {
