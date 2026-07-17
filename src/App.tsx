@@ -377,6 +377,7 @@ export function App() {
   const todayDayKeyValue = today?.keys.day ?? todayKey();
   const activeDay = selectedDayKey || todayDayKeyValue;
   const isSelectedToday = activeDay === todayDayKeyValue;
+  const canGoNextDay = activeDay < todayDayKeyValue;
   const selectedDayDataMatches = selectedDayData?.keys.day === activeDay;
   const activeData = selectedDayDataMatches ? selectedDayData : isSelectedToday ? today : null;
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
@@ -555,7 +556,9 @@ export function App() {
   }
 
   function navigateDay(delta: number) {
-    selectDay(shiftDayKey(activeDay, delta), { scrollToContent: true });
+    const nextDay = shiftDayKey(activeDay, delta);
+    if (delta > 0 && nextDay > todayDayKeyValue) return;
+    selectDay(nextDay, { scrollToContent: true });
   }
 
   function jumpToToday() {
@@ -1215,7 +1218,7 @@ export function App() {
             <span>上一天</span>
           </button>
           <strong>{activeDay}</strong>
-          <button type="button" aria-label="下一天" onClick={() => navigateDay(1)}>
+          <button type="button" aria-label="下一天" disabled={!canGoNextDay} onClick={() => navigateDay(1)}>
             <span>下一天</span>
             <ChevronRight size={17} />
           </button>
@@ -1295,6 +1298,21 @@ export function App() {
       </section>
 
       <div className="day-content-anchor" ref={dayContentRef} aria-hidden="true" />
+
+      <nav className="content-day-nav" aria-label="当前内容日期切换">
+        <button type="button" aria-label="查看上一天内容" onClick={() => navigateDay(-1)}>
+          <ChevronLeft size={18} />
+          <span>上一天</span>
+        </button>
+        <div>
+          <small>当前内容</small>
+          <strong>{isSelectedToday ? "今天" : activeDay}</strong>
+        </div>
+        <button type="button" aria-label="查看下一天内容" disabled={!canGoNextDay} onClick={() => navigateDay(1)}>
+          <span>下一天</span>
+          <ChevronRight size={18} />
+        </button>
+      </nav>
 
       <section className="focus-panel">
         <div className="section-title">

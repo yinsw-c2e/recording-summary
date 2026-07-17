@@ -626,6 +626,57 @@ button:disabled {
   font-weight: 800;
 }
 
+.day-switcher button:disabled,
+.content-day-nav button:disabled {
+  opacity: 0.45;
+}
+
+.content-day-nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-top: -2px;
+  padding: 8px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.content-day-nav button {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #263244;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.content-day-nav div {
+  min-width: 84px;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.content-day-nav small {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.content-day-nav strong {
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.15;
+}
+
 .selected-day-strip {
   min-height: 38px;
   display: grid;
