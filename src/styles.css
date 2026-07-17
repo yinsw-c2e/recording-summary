@@ -477,6 +477,12 @@ button:disabled {
   font-weight: 800;
 }
 
+.copy-button.compact {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .focus-block {
   display: grid;
   gap: 8px;
@@ -1284,10 +1290,71 @@ audio {
   transform: rotate(90deg);
 }
 
+.card-toggle.active {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: #111827;
+}
+
 .card-toggle.danger {
   border-color: #fecaca;
   color: #b42318;
   background: #fffafa;
+}
+
+.card-source {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.card-source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-source-head strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.source-meta span {
+  border-radius: 8px;
+  background: #eef2f7;
+  color: #475467;
+  padding: 4px 7px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.card-source pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #263244;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.source-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #667085;
+  font-size: 13px;
 }
 
 .card-editing {

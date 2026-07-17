@@ -87,7 +87,7 @@ const typeLabels: Record<string, string> = {
 };
 
 type SpeechSource = "summary" | "focus";
-type CopySource = "focus" | "summary" | `card:${string}` | `transcript:${string}`;
+type CopySource = "focus" | "summary" | `card:${string}` | `card-source:${string}` | `transcript:${string}`;
 type CompletedActions = Record<string, true>;
 type StatusTone = "pending" | "active" | "done" | "warning" | "danger" | "muted";
 type CardDraft = {
@@ -291,6 +291,8 @@ function cardMarkdown(card: ThoughtCard, completedActions: CompletedActions = {}
     "",
     `- 类型：${typeLabels[card.type] ?? card.type}`,
     `- 置信度：${Math.round(card.confidence * 100)}%`,
+    `- 来源录音：${card.sourceRecordingId}`,
+    `- 来源片段：${card.sourceTextRange}`,
     "",
     "## 摘要",
     card.summary,
@@ -303,6 +305,20 @@ function cardMarkdown(card: ThoughtCard, completedActions: CompletedActions = {}
     "",
     "## 标签",
     ...markdownList(card.tags, "暂无标签")
+  ].join("\n");
+}
+
+function cardSourceMarkdown(card: ThoughtCard, transcript: RecordingTranscript): string {
+  return [
+    `# ${card.title} 来源`,
+    "",
+    `- 来源录音：${card.sourceRecordingId}`,
+    `- 来源片段：${card.sourceTextRange}`,
+    `- 转写状态：${transcript.status}`,
+    `- 语言：${transcript.language || "未知"}`,
+    "",
+    "## 原始转写",
+    transcript.rawText
   ].join("\n");
 }
 
@@ -330,6 +346,8 @@ export function App() {
   const [editingTranscriptId, setEditingTranscriptId] = useState("");
   const [transcriptDraft, setTranscriptDraft] = useState("");
   const [editingCardId, setEditingCardId] = useState("");
+  const [openCardSourceId, setOpenCardSourceId] = useState("");
+  const [cardSourceLoadingId, setCardSourceLoadingId] = useState("");
   const [cardDraft, setCardDraft] = useState<CardDraft>(() => ({
     type: "daily_note",
     title: "",
@@ -531,6 +549,8 @@ export function App() {
     setEditingTranscriptId("");
     setTranscriptDraft("");
     setEditingCardId("");
+    setOpenCardSourceId("");
+    setCardSourceLoadingId("");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -808,6 +828,7 @@ export function App() {
 
   function startEditingCard(card: ThoughtCard) {
     setEditingCardId(card.id);
+    setOpenCardSourceId("");
     setCardDraft(draftFromCard(card));
     setError("");
   }
@@ -840,7 +861,31 @@ export function App() {
     await runAction("card-delete", async () => {
       await deleteThoughtCard(card.id);
       if (editingCardId === card.id) setEditingCardId("");
+      if (openCardSourceId === card.id) setOpenCardSourceId("");
     });
+  }
+
+  async function toggleCardSource(card: ThoughtCard) {
+    if (openCardSourceId === card.id) {
+      setOpenCardSourceId("");
+      return;
+    }
+
+    setOpenCardSourceId(card.id);
+    setEditingCardId("");
+    if (transcripts[card.sourceRecordingId]) return;
+
+    setError("");
+    setCardSourceLoadingId(card.id);
+    try {
+      const transcript = await getRecordingTranscript(card.sourceRecordingId);
+      setTranscripts((current) => ({ ...current, [card.sourceRecordingId]: transcript }));
+    } catch (err) {
+      setOpenCardSourceId("");
+      setError(err instanceof Error ? `读取卡片来源失败：${err.message}` : String(err));
+    } finally {
+      setCardSourceLoadingId("");
+    }
   }
 
   async function submitLogin(event: FormEvent) {
@@ -887,6 +932,8 @@ export function App() {
     setOpenTranscriptId("");
     setTranscriptLoadingId("");
     setTranscripts({});
+    setOpenCardSourceId("");
+    setCardSourceLoadingId("");
     setCopiedSource(null);
   }
 
@@ -1655,15 +1702,24 @@ export function App() {
                 key={card.id}
                 card={card}
                 copied={copiedSource === `card:${card.id}`}
+                sourceCopied={copiedSource === `card-source:${card.id}`}
                 onCopy={() => copyText(cardMarkdown(card, completedActions), `card:${card.id}`)}
+                onCopySource={() => {
+                  const transcript = transcripts[card.sourceRecordingId];
+                  if (transcript) copyText(cardSourceMarkdown(card, transcript), `card-source:${card.id}`);
+                }}
                 isEditing={editingCardId === card.id}
                 draft={cardDraft}
                 busy={busy}
+                sourceOpen={openCardSourceId === card.id}
+                sourceLoading={cardSourceLoadingId === card.id}
+                sourceTranscript={transcripts[card.sourceRecordingId] ?? null}
                 onStartEdit={() => startEditingCard(card)}
                 onDraftChange={setCardDraft}
                 onCancelEdit={() => setEditingCardId("")}
                 onSaveEdit={() => saveCardEdit(card)}
                 onDelete={() => removeCard(card)}
+                onToggleSource={() => toggleCardSource(card)}
               />
             ))
           ) : (
@@ -1678,27 +1734,39 @@ export function App() {
 function ThoughtCardItem({
   card,
   copied,
+  sourceCopied,
   onCopy,
+  onCopySource,
   isEditing,
   draft,
   busy,
+  sourceOpen,
+  sourceLoading,
+  sourceTranscript,
   onStartEdit,
   onDraftChange,
   onCancelEdit,
   onSaveEdit,
-  onDelete
+  onDelete,
+  onToggleSource
 }: {
   card: ThoughtCard;
   copied: boolean;
+  sourceCopied: boolean;
   onCopy: () => void;
+  onCopySource: () => void;
   isEditing: boolean;
   draft: CardDraft;
   busy: string | null;
+  sourceOpen: boolean;
+  sourceLoading: boolean;
+  sourceTranscript: RecordingTranscript | null;
   onStartEdit: () => void;
   onDraftChange: (draft: CardDraft) => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onDelete: () => void;
+  onToggleSource: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const updateDraft = (patch: Partial<CardDraft>) => onDraftChange({ ...draft, ...patch });
@@ -1791,10 +1859,41 @@ function ThoughtCardItem({
           <span key={tag}>{tag}</span>
         ))}
       </div>
+      {sourceOpen ? (
+        <div className="card-source">
+          <div className="card-source-head">
+            <strong>来源转写</strong>
+            {sourceTranscript ? (
+              <button type="button" className="copy-button compact" onClick={onCopySource}>
+                {sourceCopied ? <Check size={15} /> : <Clipboard size={15} />}
+                {sourceCopied ? "已复制" : "复制来源"}
+              </button>
+            ) : null}
+          </div>
+          <div className="source-meta">
+            <span>录音 {card.sourceRecordingId}</span>
+            <span>片段 {card.sourceTextRange}</span>
+          </div>
+          {sourceLoading ? (
+            <div className="source-loading">
+              <Loader2 className="spin" size={15} />
+              正在读取来源转写
+            </div>
+          ) : sourceTranscript ? (
+            <pre>{sourceTranscript.rawText}</pre>
+          ) : (
+            <div className="source-loading">暂无来源转写</div>
+          )}
+        </div>
+      ) : null}
       <div className="card-actions">
         <button type="button" className={`card-toggle ${expanded ? "expanded" : ""}`} onClick={() => setExpanded((current) => !current)}>
           <ChevronRight size={16} />
           {expanded ? "收起" : "展开"}
+        </button>
+        <button type="button" className={`card-toggle ${sourceOpen ? "active" : ""}`} disabled={busy !== null} onClick={onToggleSource}>
+          {sourceLoading ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
+          {sourceOpen ? "收起来源" : "来源"}
         </button>
         <button type="button" className="card-toggle" disabled={busy !== null} onClick={onStartEdit}>
           <Pencil size={16} />

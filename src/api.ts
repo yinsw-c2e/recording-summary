@@ -10,6 +10,7 @@ export interface ThoughtCard {
   tags: string[];
   confidence: number;
   sourceRecordingId: string;
+  sourceTextRange: string;
 }
 
 export interface CardSearchResult extends ThoughtCard {
