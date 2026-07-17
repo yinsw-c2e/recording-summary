@@ -30,6 +30,7 @@ import {
   openDb,
   requeueTranscriptionJob,
   searchCards,
+  setCardStarred,
   upsertWorkerHeartbeat,
   upsertTranscript,
   type DbHandle
@@ -291,6 +292,15 @@ export function buildServer(handle: DbHandle = openDb()) {
     const result = await deleteThoughtCardAndRefreshSummaries(handle, tts, id);
     if (!result) return reply.code(404).send({ error: "card not found" });
     return result;
+  });
+
+  app.patch("/api/cards/:id/star", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    const body = request.body as { starred?: unknown };
+    if (typeof body.starred !== "boolean") return reply.code(400).send({ error: "starred must be boolean" });
+    const card = setCardStarred(handle, id, body.starred);
+    if (!card) return reply.code(404).send({ error: "card not found" });
+    return { card };
   });
 
   app.post("/api/recordings/:id/transcript/organize", async (request, reply) => {

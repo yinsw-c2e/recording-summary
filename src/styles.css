@@ -966,6 +966,18 @@ audio {
   color: #ffffff;
 }
 
+.card-filter button.starred-filter {
+  border-color: #facc15;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.card-filter button.starred-filter.active {
+  border-color: #92400e;
+  background: #92400e;
+  color: #ffffff;
+}
+
 .recording-list {
   display: grid;
   gap: 8px;
@@ -1345,6 +1357,12 @@ audio {
   border-color: #94a3b8;
   background: #f8fafc;
   color: #111827;
+}
+
+.card-toggle.starred {
+  border-color: #facc15;
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .card-toggle.danger {

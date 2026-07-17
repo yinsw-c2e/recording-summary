@@ -11,6 +11,7 @@ export interface ThoughtCard {
   confidence: number;
   sourceRecordingId: string;
   sourceTextRange: string;
+  starred: boolean;
 }
 
 export interface CardSearchResult extends ThoughtCard {
@@ -205,6 +206,14 @@ export function updateThoughtCard(cardId: string, input: CardEditInput): Promise
 
 export function deleteThoughtCard(cardId: string): Promise<CardDeleteResult> {
   return json(`/api/cards/${cardId}`, { method: "DELETE" });
+}
+
+export function setThoughtCardStarred(cardId: string, starred: boolean): Promise<{ card: ThoughtCard }> {
+  return json(`/api/cards/${cardId}/star`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ starred })
+  });
 }
 
 export function saveTranscriptAndOrganize(recordingId: string, text: string): Promise<ManualTranscriptOrganizeResult> {

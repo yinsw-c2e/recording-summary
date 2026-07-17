@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Star,
   Square,
   Waves
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   retryTranscription,
   searchCards,
   saveTranscriptAndOrganize,
+  setThoughtCardStarred,
   updateThoughtCard,
   uploadRecording,
   type Period,
@@ -290,6 +292,7 @@ function cardMarkdown(card: ThoughtCard, completedActions: CompletedActions = {}
     `# ${card.title}`,
     "",
     `- 类型：${typeLabels[card.type] ?? card.type}`,
+    `- 重点：${card.starred ? "是" : "否"}`,
     `- 置信度：${Math.round(card.confidence * 100)}%`,
     `- 来源录音：${card.sourceRecordingId}`,
     `- 来源片段：${card.sourceTextRange}`,
@@ -414,6 +417,7 @@ export function App() {
     [cards]
   );
   const reviewCards = useMemo(() => cards.filter((card) => card.type === "question" || card.type === "uncertain"), [cards]);
+  const starredCardCount = useMemo(() => cards.filter((card) => card.starred).length, [cards]);
   const cardTypeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     cards.forEach((card) => counts.set(card.type, (counts.get(card.type) ?? 0) + 1));
@@ -426,7 +430,12 @@ export function App() {
     [cardTypeCounts]
   );
   const filteredCards = useMemo(
-    () => (cardTypeFilter === "all" ? cards : cards.filter((card) => card.type === cardTypeFilter)),
+    () =>
+      cardTypeFilter === "all"
+        ? cards
+        : cardTypeFilter === "starred"
+          ? cards.filter((card) => card.starred)
+          : cards.filter((card) => card.type === cardTypeFilter),
     [cards, cardTypeFilter]
   );
   const recordingFilterCounts = useMemo(() => countRecordingFilters(recordings), [recordings]);
@@ -865,6 +874,12 @@ export function App() {
       await deleteThoughtCard(card.id);
       if (editingCardId === card.id) setEditingCardId("");
       if (openCardSourceId === card.id) setOpenCardSourceId("");
+    });
+  }
+
+  async function toggleCardStar(card: ThoughtCard) {
+    await runAction("card-star", async () => {
+      await setThoughtCardStarred(card.id, !card.starred);
     });
   }
 
@@ -1700,6 +1715,16 @@ export function App() {
             >
               全部 {cards.length}
             </button>
+            {starredCardCount || cardTypeFilter === "starred" ? (
+              <button
+                type="button"
+                className={cardTypeFilter === "starred" ? "active starred-filter" : "starred-filter"}
+                aria-pressed={cardTypeFilter === "starred"}
+                onClick={() => setCardTypeFilter("starred")}
+              >
+                重点 {starredCardCount}
+              </button>
+            ) : null}
             {visibleCardTypes.map((type) => (
               <button
                 type="button"
@@ -1737,6 +1762,7 @@ export function App() {
                 onCancelEdit={() => setEditingCardId("")}
                 onSaveEdit={() => saveCardEdit(card)}
                 onDelete={() => removeCard(card)}
+                onToggleStar={() => toggleCardStar(card)}
                 onToggleSource={() => toggleCardSource(card)}
               />
             ))
@@ -1766,6 +1792,7 @@ function ThoughtCardItem({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  onToggleStar,
   onToggleSource
 }: {
   card: ThoughtCard;
@@ -1784,6 +1811,7 @@ function ThoughtCardItem({
   onCancelEdit: () => void;
   onSaveEdit: () => void;
   onDelete: () => void;
+  onToggleStar: () => void;
   onToggleSource: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -1845,7 +1873,7 @@ function ThoughtCardItem({
     <article className="thought-card">
       <div className="card-head">
         <span>{typeLabels[card.type] ?? card.type}</span>
-        <small>{Math.round(card.confidence * 100)}%</small>
+        <small>{card.starred ? "重点 · " : ""}{Math.round(card.confidence * 100)}%</small>
       </div>
       <h3>{card.title}</h3>
       <p>{card.summary}</p>
@@ -1912,6 +1940,10 @@ function ThoughtCardItem({
         <button type="button" className={`card-toggle ${sourceOpen ? "active" : ""}`} disabled={busy !== null} onClick={onToggleSource}>
           {sourceLoading ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
           {sourceOpen ? "收起来源" : "来源"}
+        </button>
+        <button type="button" className={`card-toggle ${card.starred ? "starred" : ""}`} disabled={busy !== null} onClick={onToggleStar}>
+          <Star size={16} fill={card.starred ? "currentColor" : "none"} />
+          {card.starred ? "已重点" : "重点"}
         </button>
         <button type="button" className="card-toggle" disabled={busy !== null} onClick={onStartEdit}>
           <Pencil size={16} />

@@ -394,6 +394,81 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("marks a card as starred and returns starred cards first", async () => {
+    const dataDir = path.resolve("data/test");
+    await fs.rm(dataDir, { recursive: true, force: true });
+
+    const [
+      { openDb, createAudioAsset, createRecording, upsertTranscript, getCardsForPeriod, searchCards, setCardStarred },
+      { MockLLMProvider },
+      workflows,
+      { dayKey }
+    ] = await Promise.all([
+      import("../server/db"),
+      import("../server/providers/mockLlm"),
+      import("../server/workflows"),
+      import("../server/time")
+    ]);
+
+    const handle = openDb();
+    const llm = new MockLLMProvider();
+    for (const id of ["star-r1", "star-r2"]) {
+      const asset = createAudioAsset(handle, {
+        kind: "recording",
+        ownerId: id,
+        path: `raw_audio/${id}.webm`,
+        mimeType: "audio/webm"
+      });
+      createRecording(handle, {
+        id,
+        audioPath: `raw_audio/${id}.webm`,
+        audioAssetId: asset.id,
+        duration: 9,
+        mimeType: "audio/webm"
+      });
+    }
+    upsertTranscript(handle, {
+      recordingId: "star-r1",
+      rawText: "普通记录卡片，用来验证它会排在重点卡片后面。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/star-r1.txt"
+    });
+    upsertTranscript(handle, {
+      recordingId: "star-r2",
+      rawText: "重点手机体验卡片，用来验证重点筛选和搜索结果。",
+      language: "zh",
+      sourceTimeRanges: "full",
+      status: "completed",
+      path: "raw_transcript/star-r2.txt"
+    });
+
+    await workflows.organizeNew(handle, llm);
+    const today = dayKey(new Date());
+    const cardsBeforeStar = getCardsForPeriod(handle, "day", today);
+    const starredTarget = cardsBeforeStar.find((card) => card.sourceRecordingId === "star-r2");
+    expect(starredTarget).toBeDefined();
+
+    const starred = setCardStarred(handle, starredTarget!.id, true);
+    expect(starred?.starred).toBe(true);
+
+    const cardsAfterStar = getCardsForPeriod(handle, "day", today);
+    expect(cardsAfterStar[0]?.id).toBe(starredTarget!.id);
+    expect(cardsAfterStar[0]?.starred).toBe(true);
+    expect(cardsAfterStar[1]?.starred).toBe(false);
+
+    const searchResult = searchCards(handle, "手机体验", 10)[0];
+    expect(searchResult?.id).toBe(starredTarget!.id);
+    expect(searchResult?.starred).toBe(true);
+
+    const unstarred = setCardStarred(handle, starredTarget!.id, false);
+    expect(unstarred?.starred).toBe(false);
+
+    handle.db.close();
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("deletes a failed recording without rebuilding summaries it never affected", async () => {
     const dataDir = path.resolve("data/test");
     await fs.rm(dataDir, { recursive: true, force: true });

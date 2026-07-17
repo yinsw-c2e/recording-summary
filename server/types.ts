@@ -110,6 +110,7 @@ export interface ThoughtCard {
   sourceRecordingId: string;
   sourceTextRange: string;
   confidence: number;
+  starred: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;

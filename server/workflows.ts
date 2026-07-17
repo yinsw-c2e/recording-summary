@@ -182,7 +182,11 @@ function isLikelyBadTranscript(text: string): boolean {
   return repeated && compact.length < 90;
 }
 
-function normalizeCard(input: OrganizedCardInput, recordingId: string, version: number): Omit<ThoughtCard, "id" | "createdAt" | "updatedAt"> & { rawJson: unknown } {
+function normalizeCard(
+  input: OrganizedCardInput,
+  recordingId: string,
+  version: number
+): Omit<ThoughtCard, "id" | "createdAt" | "updatedAt" | "starred"> & { rawJson: unknown } {
   return {
     type: input.type,
     title: input.title.trim(),
