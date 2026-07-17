@@ -435,6 +435,11 @@ button:disabled {
   background: #f7fef9;
 }
 
+.next-step-panel.confirm {
+  border-color: #fed7aa;
+  background: #fffaf4;
+}
+
 .next-step-panel.ready {
   border-color: #d7dde6;
   background: #ffffff;
@@ -1532,6 +1537,18 @@ audio {
 .card-filter button.review-filter.active {
   border-color: #1d4ed8;
   background: #1d4ed8;
+  color: #ffffff;
+}
+
+.card-filter button.confirm-filter {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.card-filter button.confirm-filter.active {
+  border-color: #c2410c;
+  background: #c2410c;
   color: #ffffff;
 }
 

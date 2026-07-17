@@ -563,8 +563,10 @@ export function App() {
             ? cards.filter((card) => !card.reviewed)
             : cardTypeFilter === "reviewed"
               ? cards.filter((card) => card.reviewed)
+              : cardTypeFilter === "needs_confirm"
+                ? reviewCards
               : cards.filter((card) => card.type === cardTypeFilter),
-    [cards, cardTypeFilter]
+    [cards, cardTypeFilter, reviewCards]
   );
   const relationsByCard = useMemo(() => {
     const grouped = new Map<string, CardRelationView[]>();
@@ -595,6 +597,7 @@ export function App() {
     openRecordingCount: recordingFilterCounts.open,
     reviewDueCount: reviewDueCards.length,
     openActionCount,
+    confirmCount: reviewCards.length,
     cardCount: cards.length,
     recordingCount: recordings.length
   });
@@ -1618,6 +1621,20 @@ export function App() {
               </button>
             </div>
           </>
+        ) : nextStepKind === "confirm" ? (
+          <>
+            <div className="next-step-copy">
+              <span>下一步</span>
+              <strong>{reviewCards.length} 个内容待确认</strong>
+              <small>这些通常是问题或低置信度记录，先确认再复习，可以避免模糊内容混进总结。</small>
+            </div>
+            <div className="next-step-actions">
+              <button type="button" className="primary" onClick={() => jumpToCards("needs_confirm")}>
+                <AlertCircle size={16} />
+                查看待确认
+              </button>
+            </div>
+          </>
         ) : nextStepKind === "ready" ? (
           <>
             <div className="next-step-copy">
@@ -2089,7 +2106,15 @@ export function App() {
         </div>
         {reviewCards.length ? (
           <div className="focus-block">
-            <strong>待确认</strong>
+            <div className="focus-block-head with-action">
+              <strong>待确认</strong>
+              <button
+                type="button"
+                onClick={() => jumpToCards("needs_confirm")}
+              >
+                查看全部
+              </button>
+            </div>
             <div className="review-list">
               {reviewCards.slice(0, 3).map((card) => (
                 <span key={card.id}>{card.title}</span>
@@ -2438,6 +2463,16 @@ export function App() {
                 onClick={() => setCardTypeFilter("review_due")}
               >
                 待复习 {reviewDueCards.length}
+              </button>
+            ) : null}
+            {reviewCards.length || cardTypeFilter === "needs_confirm" ? (
+              <button
+                type="button"
+                className={cardTypeFilter === "needs_confirm" ? "active confirm-filter" : "confirm-filter"}
+                aria-pressed={cardTypeFilter === "needs_confirm"}
+                onClick={() => setCardTypeFilter("needs_confirm")}
+              >
+                待确认 {reviewCards.length}
               </button>
             ) : null}
             {reviewedCardCount || cardTypeFilter === "reviewed" ? (

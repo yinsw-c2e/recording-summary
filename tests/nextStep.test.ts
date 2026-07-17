@@ -7,6 +7,7 @@ function input(overrides: Partial<NextStepInput>): NextStepInput {
     openRecordingCount: 0,
     reviewDueCount: 0,
     openActionCount: 0,
+    confirmCount: 0,
     cardCount: 0,
     recordingCount: 0,
     ...overrides
@@ -22,6 +23,7 @@ describe("selectNextStep", () => {
           openRecordingCount: 2,
           reviewDueCount: 3,
           openActionCount: 4,
+          confirmCount: 5,
           cardCount: 5
         })
       )
@@ -36,6 +38,10 @@ describe("selectNextStep", () => {
 
   it("surfaces review due cards before action items", () => {
     expect(selectNextStep(input({ reviewDueCount: 2, openActionCount: 1, cardCount: 2 }))).toBe("review_due");
+  });
+
+  it("surfaces confirmation work before normal review and action work", () => {
+    expect(selectNextStep(input({ confirmCount: 1, reviewDueCount: 2, openActionCount: 1, cardCount: 2 }))).toBe("confirm");
   });
 
   it("falls back to action items, ready state, then empty state", () => {
