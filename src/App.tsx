@@ -8,6 +8,7 @@ import {
   Clock,
   Trash2,
   FileAudio,
+  ListChecks,
   Loader2,
   LogOut,
   Mic,
@@ -62,6 +63,7 @@ const typeLabels: Record<string, string> = {
   uncertain: "待确认"
 };
 
+const cardTypeOrder = ["task", "project_idea", "raw_idea", "knowledge", "question", "reflection", "daily_note", "uncertain"];
 const recordingMimeCandidates = [
   "audio/mp4;codecs=mp4a.40.2",
   "audio/mp4",
@@ -170,6 +172,7 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CardSearchResult[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
+  const [cardTypeFilter, setCardTypeFilter] = useState("all");
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -185,6 +188,34 @@ export function App() {
   const todayDayKey = today?.keys.day ?? todayKey();
   const overviewByDay = useMemo(() => new Map(monthOverview.map((item) => [item.dayKey, item])), [monthOverview]);
   const calendarDays = useMemo(() => daysForMonth(visibleMonth || monthFromDay(todayDayKey)), [visibleMonth, todayDayKey]);
+  const actionItems = useMemo(
+    () =>
+      cards.flatMap((card) =>
+        card.actions.map((action, index) => ({
+          id: `${card.id}-${index}`,
+          action,
+          title: card.title,
+          type: card.type
+        }))
+      ),
+    [cards]
+  );
+  const reviewCards = useMemo(() => cards.filter((card) => card.type === "question" || card.type === "uncertain"), [cards]);
+  const cardTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    cards.forEach((card) => counts.set(card.type, (counts.get(card.type) ?? 0) + 1));
+    return counts;
+  }, [cards]);
+  const visibleCardTypes = useMemo(
+    () => cardTypeOrder.filter((type) => cardTypeCounts.has(type)).concat(
+      Array.from(cardTypeCounts.keys()).filter((type) => !cardTypeOrder.includes(type))
+    ),
+    [cardTypeCounts]
+  );
+  const filteredCards = useMemo(
+    () => (cardTypeFilter === "all" ? cards : cards.filter((card) => card.type === cardTypeFilter)),
+    [cards, cardTypeFilter]
+  );
 
   async function refresh(): Promise<TodayResponse | null> {
     try {
@@ -224,6 +255,7 @@ export function App() {
     setSelectedDayKey(day);
     setVisibleMonth(monthFromDay(day));
     setSelectedPeriod("day");
+    setCardTypeFilter("all");
     if (options.scrollToContent) scrollToDayContent();
   }
 
@@ -431,6 +463,7 @@ export function App() {
     setSearchQuery("");
     setSearchResults([]);
     setSearchBusy(false);
+    setCardTypeFilter("all");
   }
 
   function speakSummary(rate = speechRate) {
@@ -665,6 +698,56 @@ export function App() {
 
       <div className="day-content-anchor" ref={dayContentRef} aria-hidden="true" />
 
+      <section className="focus-panel">
+        <div className="section-title">
+          <ListChecks size={18} />
+          <h2>{selectedDayKey === todayDayKey ? "今日重点" : `${selectedDayKey} 重点`}</h2>
+        </div>
+        <div className="focus-metrics">
+          <div>
+            <span>{cards.length}</span>
+            <small>卡片</small>
+          </div>
+          <div>
+            <span>{actionItems.length}</span>
+            <small>行动项</small>
+          </div>
+          <div>
+            <span>{reviewCards.length}</span>
+            <small>待确认</small>
+          </div>
+        </div>
+        <div className="focus-block">
+          <strong>行动项</strong>
+          {actionItems.length ? (
+            <div className="action-list">
+              {actionItems.slice(0, 6).map((item) => (
+                <div key={item.id} className="action-item">
+                  <span>{item.action}</span>
+                  <small>
+                    {typeLabels[item.type] ?? item.type} · {item.title}
+                  </small>
+                </div>
+              ))}
+              {actionItems.length > 6 ? <small className="more-count">还有 {actionItems.length - 6} 个行动项</small> : null}
+            </div>
+          ) : (
+            <div className="empty-card compact">暂无明确行动项</div>
+          )}
+        </div>
+        {reviewCards.length ? (
+          <div className="focus-block">
+            <strong>待确认</strong>
+            <div className="review-list">
+              {reviewCards.slice(0, 3).map((card) => (
+                <span key={card.id}>{card.title}</span>
+              ))}
+              {reviewCards.length > 3 ? <small className="more-count">还有 {reviewCards.length - 3} 个待确认</small> : null}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <section className="recordings-panel">
         <div className="section-title">
           <FileAudio size={18} />
@@ -812,8 +895,35 @@ export function App() {
           <Sparkles size={18} />
           <h2>{selectedDayKey === todayDayKey ? "今日卡片" : `${selectedDayKey} 卡片`}</h2>
         </div>
+        {cards.length ? (
+          <div className="card-filter" aria-label="卡片分类筛选">
+            <button
+              type="button"
+              className={cardTypeFilter === "all" ? "active" : ""}
+              aria-pressed={cardTypeFilter === "all"}
+              onClick={() => setCardTypeFilter("all")}
+            >
+              全部 {cards.length}
+            </button>
+            {visibleCardTypes.map((type) => (
+              <button
+                type="button"
+                key={type}
+                className={cardTypeFilter === type ? "active" : ""}
+                aria-pressed={cardTypeFilter === type}
+                onClick={() => setCardTypeFilter(type)}
+              >
+                {typeLabels[type] ?? type} {cardTypeCounts.get(type)}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="card-list">
-          {cards.length ? cards.map((card) => <ThoughtCardItem key={card.id} card={card} />) : <div className="empty-card">暂无卡片</div>}
+          {filteredCards.length ? (
+            filteredCards.map((card) => <ThoughtCardItem key={card.id} card={card} />)
+          ) : (
+            <div className="empty-card">{cards.length ? "当前分类暂无卡片" : "暂无卡片"}</div>
+          )}
         </div>
       </section>
     </main>
