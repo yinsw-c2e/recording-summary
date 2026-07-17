@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CalendarDays,
   Check,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -51,6 +52,7 @@ import {
   retryTranscription,
   searchCards,
   saveTranscriptAndOrganize,
+  setThoughtCardReviewed,
   setThoughtCardStarred,
   updateThoughtCard,
   uploadRecording,
@@ -289,6 +291,7 @@ function cardMarkdown(card: ThoughtCard, completedActions: CompletedActions = {}
     "",
     `- 类型：${typeLabels[card.type] ?? card.type}`,
     `- 重点：${card.starred ? "是" : "否"}`,
+    `- 已复习：${card.reviewed ? "是" : "否"}`,
     `- 置信度：${Math.round(card.confidence * 100)}%`,
     `- 来源录音：${card.sourceRecordingId}`,
     `- 来源片段：${card.sourceTextRange}`,
@@ -377,6 +380,9 @@ export function App() {
   const activeDay = selectedDayKey || todayDayKeyValue;
   const isSelectedToday = activeDay === todayDayKeyValue;
   const canGoNextDay = activeDay < todayDayKeyValue;
+  const previousDay = shiftDayKey(activeDay, -1);
+  const nextDay = shiftDayKey(activeDay, 1);
+  const activeDayLabel = isSelectedToday ? `今天 ${activeDay}` : activeDay;
   const selectedDayDataMatches = selectedDayData?.keys.day === activeDay;
   const activeData = selectedDayDataMatches ? selectedDayData : isSelectedToday ? today : null;
   const selectedSummary: SummaryArtifact | null = activeData?.summaries[selectedPeriod] ?? null;
@@ -415,6 +421,8 @@ export function App() {
   const reviewCards = useMemo(() => cards.filter((card) => card.type === "question" || card.type === "uncertain"), [cards]);
   const starredCards = useMemo(() => cards.filter((card) => card.starred), [cards]);
   const starredCardCount = starredCards.length;
+  const reviewDueCards = useMemo(() => cards.filter((card) => !card.reviewed), [cards]);
+  const reviewedCardCount = cards.length - reviewDueCards.length;
   const cardTypeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     cards.forEach((card) => counts.set(card.type, (counts.get(card.type) ?? 0) + 1));
@@ -432,7 +440,11 @@ export function App() {
         ? cards
         : cardTypeFilter === "starred"
           ? cards.filter((card) => card.starred)
-          : cards.filter((card) => card.type === cardTypeFilter),
+          : cardTypeFilter === "review_due"
+            ? cards.filter((card) => !card.reviewed)
+            : cardTypeFilter === "reviewed"
+              ? cards.filter((card) => card.reviewed)
+              : cards.filter((card) => card.type === cardTypeFilter),
     [cards, cardTypeFilter]
   );
   const recordingFilterCounts = useMemo(() => countRecordingFilters(recordings), [recordings]);
@@ -845,6 +857,12 @@ export function App() {
     });
   }
 
+  async function toggleCardReviewed(card: ThoughtCard) {
+    await runAction("card-review", async () => {
+      await setThoughtCardReviewed(card.id, !card.reviewed);
+    });
+  }
+
   async function toggleCardSource(card: ThoughtCard) {
     if (openCardSourceId === card.id) {
       setOpenCardSourceId("");
@@ -1189,18 +1207,24 @@ export function App() {
           <CalendarDays size={18} />
           <h2>日期看板</h2>
         </div>
-        <div className="day-switcher" aria-label="日期切换">
-          <button type="button" aria-label="上一天" onClick={() => navigateDay(-1)}>
+        <div className="day-switcher" aria-label="日期切换" data-active-day={activeDay}>
+          <button type="button" aria-label={`查看上一天 ${previousDay}`} title={`定位到 ${previousDay}`} onClick={() => navigateDay(-1)}>
             <ChevronLeft size={17} />
             <span>上一天</span>
           </button>
-          <strong>{activeDay}</strong>
-          <button type="button" aria-label="下一天" disabled={!canGoNextDay} onClick={() => navigateDay(1)}>
+          <strong>{activeDayLabel}</strong>
+          <button
+            type="button"
+            aria-label={`查看下一天 ${nextDay}`}
+            title={canGoNextDay ? `定位到 ${nextDay}` : "已经是今天"}
+            disabled={!canGoNextDay}
+            onClick={() => navigateDay(1)}
+          >
             <span>下一天</span>
             <ChevronRight size={17} />
           </button>
         </div>
-        <div className="selected-day-strip">
+        <div className="selected-day-strip" aria-live="polite">
           <span>
             {dayDataLoading ? <Loader2 className="spin" size={14} /> : <CalendarDays size={14} />}
             {dayDataLoading ? "正在加载这一天" : isSelectedToday ? "正在看今天" : "正在看历史日期"}
@@ -1276,16 +1300,22 @@ export function App() {
 
       <div className="day-content-anchor" ref={dayContentRef} aria-hidden="true" />
 
-      <nav className="content-day-nav" aria-label="当前内容日期切换">
-        <button type="button" aria-label="查看上一天内容" onClick={() => navigateDay(-1)}>
+      <nav className="content-day-nav" aria-label="当前内容日期切换" data-active-day={activeDay}>
+        <button type="button" aria-label={`查看上一天内容 ${previousDay}`} title={`定位到 ${previousDay}`} onClick={() => navigateDay(-1)}>
           <ChevronLeft size={18} />
           <span>上一天</span>
         </button>
         <div>
           <small>当前内容</small>
-          <strong>{isSelectedToday ? "今天" : activeDay}</strong>
+          <strong>{activeDayLabel}</strong>
         </div>
-        <button type="button" aria-label="查看下一天内容" disabled={!canGoNextDay} onClick={() => navigateDay(1)}>
+        <button
+          type="button"
+          aria-label={`查看下一天内容 ${nextDay}`}
+          title={canGoNextDay ? `定位到 ${nextDay}` : "已经是今天"}
+          disabled={!canGoNextDay}
+          onClick={() => navigateDay(1)}
+        >
           <span>下一天</span>
           <ChevronRight size={18} />
         </button>
@@ -1304,6 +1334,10 @@ export function App() {
           <div>
             <span>{starredCards.length}</span>
             <small>重点</small>
+          </div>
+          <div>
+            <span>{reviewDueCards.length}</span>
+            <small>待复习</small>
           </div>
           <div>
             <span>{actionItems.length ? `${completedActionCount}/${actionItems.length}` : 0}</span>
@@ -1719,6 +1753,26 @@ export function App() {
                 重点 {starredCardCount}
               </button>
             ) : null}
+            {reviewDueCards.length || cardTypeFilter === "review_due" ? (
+              <button
+                type="button"
+                className={cardTypeFilter === "review_due" ? "active review-filter" : "review-filter"}
+                aria-pressed={cardTypeFilter === "review_due"}
+                onClick={() => setCardTypeFilter("review_due")}
+              >
+                待复习 {reviewDueCards.length}
+              </button>
+            ) : null}
+            {reviewedCardCount || cardTypeFilter === "reviewed" ? (
+              <button
+                type="button"
+                className={cardTypeFilter === "reviewed" ? "active reviewed-filter" : "reviewed-filter"}
+                aria-pressed={cardTypeFilter === "reviewed"}
+                onClick={() => setCardTypeFilter("reviewed")}
+              >
+                已复习 {reviewedCardCount}
+              </button>
+            ) : null}
             {visibleCardTypes.map((type) => (
               <button
                 type="button"
@@ -1757,6 +1811,7 @@ export function App() {
                 onSaveEdit={() => saveCardEdit(card)}
                 onDelete={() => removeCard(card)}
                 onToggleStar={() => toggleCardStar(card)}
+                onToggleReviewed={() => toggleCardReviewed(card)}
                 onToggleSource={() => toggleCardSource(card)}
               />
             ))
@@ -1787,6 +1842,7 @@ function ThoughtCardItem({
   onSaveEdit,
   onDelete,
   onToggleStar,
+  onToggleReviewed,
   onToggleSource
 }: {
   card: ThoughtCard;
@@ -1806,6 +1862,7 @@ function ThoughtCardItem({
   onSaveEdit: () => void;
   onDelete: () => void;
   onToggleStar: () => void;
+  onToggleReviewed: () => void;
   onToggleSource: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -1867,7 +1924,7 @@ function ThoughtCardItem({
     <article className="thought-card">
       <div className="card-head">
         <span>{typeLabels[card.type] ?? card.type}</span>
-        <small>{card.starred ? "重点 · " : ""}{Math.round(card.confidence * 100)}%</small>
+        <small>{card.reviewed ? "已复习 · " : ""}{card.starred ? "重点 · " : ""}{Math.round(card.confidence * 100)}%</small>
       </div>
       <h3>{card.title}</h3>
       <p>{card.summary}</p>
@@ -1938,6 +1995,10 @@ function ThoughtCardItem({
         <button type="button" className={`card-toggle ${card.starred ? "starred" : ""}`} disabled={busy !== null} onClick={onToggleStar}>
           <Star size={16} fill={card.starred ? "currentColor" : "none"} />
           {card.starred ? "已重点" : "重点"}
+        </button>
+        <button type="button" className={`card-toggle ${card.reviewed ? "reviewed" : ""}`} disabled={busy !== null} onClick={onToggleReviewed}>
+          <CheckCircle size={16} fill={card.reviewed ? "currentColor" : "none"} />
+          {card.reviewed ? "已复习" : "待复习"}
         </button>
         <button type="button" className="card-toggle" disabled={busy !== null} onClick={onStartEdit}>
           <Pencil size={16} />

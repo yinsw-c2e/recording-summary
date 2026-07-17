@@ -125,6 +125,11 @@ function migrate(db: Database.Database): void {
       starred_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS card_review_marks (
+      card_id TEXT PRIMARY KEY,
+      reviewed_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS summary_artifacts (
       id TEXT PRIMARY KEY,
       period TEXT NOT NULL,
@@ -235,6 +240,7 @@ function mapCard(row: Record<string, unknown>): ThoughtCard {
     sourceTextRange: String(row.source_text_range),
     confidence: Number(row.confidence),
     starred: typeof row.starred_at === "string" && row.starred_at.length > 0,
+    reviewed: typeof row.reviewed_at === "string" && row.reviewed_at.length > 0,
     version: Number(row.version),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
@@ -662,6 +668,7 @@ export function deleteRecordingCascade(handle: DbHandle, id: string): DeletedRec
 
     if (cardIds.length) {
       handle.db.prepare(`DELETE FROM card_marks WHERE card_id IN (${placeholders(cardIds)})`).run(...cardIds);
+      handle.db.prepare(`DELETE FROM card_review_marks WHERE card_id IN (${placeholders(cardIds)})`).run(...cardIds);
     }
     const cardsDeleted = handle.db.prepare("DELETE FROM thought_cards WHERE source_recording_id = ?").run(recordingId).changes;
     handle.db.prepare("DELETE FROM transcripts WHERE recording_id = ?").run(recordingId);
@@ -758,6 +765,7 @@ export function deleteCardCascade(handle: DbHandle, id: string): DeletedCardCasc
       .run(cardId, cardId).changes;
     const cardsDeleted = handle.db.prepare("DELETE FROM thought_cards WHERE id = ?").run(cardId).changes;
     handle.db.prepare("DELETE FROM card_marks WHERE card_id = ?").run(cardId);
+    handle.db.prepare("DELETE FROM card_review_marks WHERE card_id = ?").run(cardId);
     const remainingRecordingCards = Number(
       (handle.db.prepare("SELECT count(*) AS n FROM thought_cards WHERE source_recording_id = ?").get(recordingId) as { n: number }).n
     );
@@ -879,7 +887,7 @@ export function getTranscriptsForPeriod(handle: DbHandle, period: Period, key: s
 
 export function insertCard(
   handle: DbHandle,
-  input: Omit<ThoughtCard, "id" | "createdAt" | "updatedAt" | "starred"> & { rawJson: unknown }
+  input: Omit<ThoughtCard, "id" | "createdAt" | "updatedAt" | "starred" | "reviewed"> & { rawJson: unknown }
 ): ThoughtCard {
   const stamp = now();
   const card = {
@@ -926,6 +934,7 @@ export function insertCard(
     sourceTextRange: card.sourceTextRange,
     confidence: card.confidence,
     starred: false,
+    reviewed: false,
     version: card.version,
     createdAt: card.createdAt,
     updatedAt: card.updatedAt
@@ -935,9 +944,10 @@ export function insertCard(
 export function getCard(handle: DbHandle, cardId: string): ThoughtCard | null {
   const row = handle.db
     .prepare(
-      `SELECT c.*, m.starred_at
+      `SELECT c.*, m.starred_at, rm.reviewed_at
        FROM thought_cards c
        LEFT JOIN card_marks m ON m.card_id = c.id
+       LEFT JOIN card_review_marks rm ON rm.card_id = c.id
        WHERE c.id = ?`
     )
     .get(cardId) as Record<string, unknown> | undefined;
@@ -1014,9 +1024,10 @@ export function insertRelation(handle: DbHandle, input: Omit<CardRelation, "id" 
 export function getRecentCards(handle: DbHandle, limit = 100): ThoughtCard[] {
   const rows = handle.db
     .prepare(
-      `SELECT c.*, m.starred_at
+      `SELECT c.*, m.starred_at, rm.reviewed_at
        FROM thought_cards c
        LEFT JOIN card_marks m ON m.card_id = c.id
+       LEFT JOIN card_review_marks rm ON rm.card_id = c.id
        ORDER BY c.created_at DESC
        LIMIT ?`
     )
@@ -1034,10 +1045,11 @@ export function getNextCardVersionForRecording(handle: DbHandle, recordingId: st
 export function getCardsForPeriod(handle: DbHandle, period: Period, key: string): ThoughtCard[] {
   const rows = handle.db
     .prepare(
-      `SELECT c.*, m.starred_at
+      `SELECT c.*, m.starred_at, rm.reviewed_at
        FROM thought_cards c
        JOIN recordings r ON r.id = c.source_recording_id
        LEFT JOIN card_marks m ON m.card_id = c.id
+       LEFT JOIN card_review_marks rm ON rm.card_id = c.id
        WHERE ${
          period === "day"
            ? "r.day_key = @key"
@@ -1045,7 +1057,9 @@ export function getCardsForPeriod(handle: DbHandle, period: Period, key: string)
              ? "r.month_key = @key"
              : "r.week_key = @key"
        }
-       ORDER BY CASE WHEN m.starred_at IS NULL THEN 1 ELSE 0 END, c.created_at ASC`
+       ORDER BY CASE WHEN m.starred_at IS NULL THEN 1 ELSE 0 END,
+                CASE WHEN rm.reviewed_at IS NULL THEN 0 ELSE 1 END,
+                c.created_at ASC`
     )
     .all({ key }) as Array<Record<string, unknown>>;
   return rows.map(mapCard);
@@ -1060,6 +1074,7 @@ export function searchCards(handle: DbHandle, query: string, limit = 20): CardSe
     .prepare(
       `SELECT c.*,
               m.starred_at,
+              rm.reviewed_at,
               r.day_key,
               r.week_key,
               r.month_key,
@@ -1067,6 +1082,7 @@ export function searchCards(handle: DbHandle, query: string, limit = 20): CardSe
        FROM thought_cards c
        JOIN recordings r ON r.id = c.source_recording_id
        LEFT JOIN card_marks m ON m.card_id = c.id
+       LEFT JOIN card_review_marks rm ON rm.card_id = c.id
        WHERE c.version = 1
          AND (
            c.title LIKE @pattern ESCAPE '\\'
@@ -1075,7 +1091,10 @@ export function searchCards(handle: DbHandle, query: string, limit = 20): CardSe
            OR c.actions_json LIKE @pattern ESCAPE '\\'
            OR c.tags_json LIKE @pattern ESCAPE '\\'
          )
-       ORDER BY CASE WHEN m.starred_at IS NULL THEN 1 ELSE 0 END, r.created_at DESC, c.created_at DESC
+       ORDER BY CASE WHEN m.starred_at IS NULL THEN 1 ELSE 0 END,
+                CASE WHEN rm.reviewed_at IS NULL THEN 0 ELSE 1 END,
+                r.created_at DESC,
+                c.created_at DESC
        LIMIT @limit`
     )
     .all({ pattern, limit: Math.max(1, Math.min(limit, 50)) }) as Array<Record<string, unknown>>;
@@ -1097,6 +1116,25 @@ export function setCardStarred(handle: DbHandle, cardId: string, starred: boolea
       .run(cardId, now());
   } else {
     handle.db.prepare("DELETE FROM card_marks WHERE card_id = ?").run(cardId);
+  }
+
+  return getCard(handle, cardId);
+}
+
+export function setCardReviewed(handle: DbHandle, cardId: string, reviewed: boolean): ThoughtCard | null {
+  const existing = getCard(handle, cardId);
+  if (!existing) return null;
+
+  if (reviewed) {
+    handle.db
+      .prepare(
+        `INSERT INTO card_review_marks (card_id, reviewed_at)
+         VALUES (?, ?)
+         ON CONFLICT(card_id) DO UPDATE SET reviewed_at = excluded.reviewed_at`
+      )
+      .run(cardId, now());
+  } else {
+    handle.db.prepare("DELETE FROM card_review_marks WHERE card_id = ?").run(cardId);
   }
 
   return getCard(handle, cardId);

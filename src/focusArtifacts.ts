@@ -24,9 +24,10 @@ export function buildFocusListeningScript(input: {
   const { actionItems, cards, completedActionCount, completedActions, day, reviewCards } = input;
   if (!cards.length) return "";
   const starredCards = cards.filter((card) => card.starred);
+  const reviewDueCards = cards.filter((card) => !card.reviewed);
   const pendingActionItems = actionItems.filter((item) => !completedActions[item.id]);
   const lines = [
-    `${day}重点。共 ${cards.length} 张卡片，${starredCards.length} 个已标重点，${actionItems.length} 个行动项，已完成 ${completedActionCount} 个，${reviewCards.length} 个待确认。`
+    `${day}重点。共 ${cards.length} 张卡片，${starredCards.length} 个已标重点，${reviewDueCards.length} 个待复习，${actionItems.length} 个行动项，已完成 ${completedActionCount} 个，${reviewCards.length} 个待确认。`
   ];
 
   if (starredCards.length) {
@@ -76,11 +77,13 @@ export function buildFocusExportMarkdown(input: {
   const { actionItems, cards, completedActionCount, completedActions, day, reviewCards, typeLabels } = input;
   if (!cards.length) return "";
   const starredCards = cards.filter((card) => card.starred);
+  const reviewDueCards = cards.filter((card) => !card.reviewed);
   const lines = [
     `# ${day} 重点`,
     "",
     `- 卡片：${cards.length}`,
     `- 已标重点：${starredCards.length}`,
+    `- 待复习：${reviewDueCards.length}`,
     `- 行动项：${actionItems.length}`,
     `- 已完成行动项：${completedActionCount}`,
     `- 待确认：${reviewCards.length}`,

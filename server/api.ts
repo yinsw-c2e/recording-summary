@@ -30,6 +30,7 @@ import {
   openDb,
   requeueTranscriptionJob,
   searchCards,
+  setCardReviewed,
   setCardStarred,
   upsertWorkerHeartbeat,
   upsertTranscript,
@@ -299,6 +300,15 @@ export function buildServer(handle: DbHandle = openDb()) {
     const body = request.body as { starred?: unknown };
     if (typeof body.starred !== "boolean") return reply.code(400).send({ error: "starred must be boolean" });
     const card = setCardStarred(handle, id, body.starred);
+    if (!card) return reply.code(404).send({ error: "card not found" });
+    return { card };
+  });
+
+  app.patch("/api/cards/:id/reviewed", async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    const body = request.body as { reviewed?: unknown };
+    if (typeof body.reviewed !== "boolean") return reply.code(400).send({ error: "reviewed must be boolean" });
+    const card = setCardReviewed(handle, id, body.reviewed);
     if (!card) return reply.code(404).send({ error: "card not found" });
     return { card };
   });

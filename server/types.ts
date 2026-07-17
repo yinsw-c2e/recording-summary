@@ -111,6 +111,7 @@ export interface ThoughtCard {
   sourceTextRange: string;
   confidence: number;
   starred: boolean;
+  reviewed: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;

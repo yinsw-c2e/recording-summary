@@ -186,7 +186,7 @@ function normalizeCard(
   input: OrganizedCardInput,
   recordingId: string,
   version: number
-): Omit<ThoughtCard, "id" | "createdAt" | "updatedAt" | "starred"> & { rawJson: unknown } {
+): Omit<ThoughtCard, "id" | "createdAt" | "updatedAt" | "starred" | "reviewed"> & { rawJson: unknown } {
   return {
     type: input.type,
     title: input.title.trim(),

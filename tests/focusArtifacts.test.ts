@@ -12,6 +12,7 @@ function card(input: Partial<ThoughtCard> & Pick<ThoughtCard, "id" | "title" | "
     sourceRecordingId: `${input.id}-recording`,
     sourceTextRange: "segment-1",
     starred: false,
+    reviewed: false,
     ...input
   };
 }
@@ -48,6 +49,7 @@ describe("focus artifacts", () => {
     });
 
     expect(script).toContain("1 个已标重点");
+    expect(script).toContain("2 个待复习");
     expect(script).toContain("已标重点卡片。");
     expect(script).toContain("重点复习卡片。这条没有行动项，但应该被朗读出来。");
     expect(script.indexOf("已标重点卡片。")).toBeLessThan(script.indexOf("未完成行动项。"));
@@ -73,6 +75,7 @@ describe("focus artifacts", () => {
     });
 
     expect(markdown).toContain("- 已标重点：1");
+    expect(markdown).toContain("- 待复习：1");
     expect(markdown).toContain("## 已标重点");
     expect(markdown).toContain("- 知识｜重点知识：需要反复听的知识点。");
   });

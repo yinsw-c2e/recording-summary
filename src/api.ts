@@ -12,6 +12,7 @@ export interface ThoughtCard {
   sourceRecordingId: string;
   sourceTextRange: string;
   starred: boolean;
+  reviewed: boolean;
 }
 
 export interface CardSearchResult extends ThoughtCard {
@@ -213,6 +214,14 @@ export function setThoughtCardStarred(cardId: string, starred: boolean): Promise
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ starred })
+  });
+}
+
+export function setThoughtCardReviewed(cardId: string, reviewed: boolean): Promise<{ card: ThoughtCard }> {
+  return json(`/api/cards/${cardId}/reviewed`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reviewed })
   });
 }
 

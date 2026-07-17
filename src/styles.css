@@ -424,7 +424,7 @@ button:disabled {
 
 .focus-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 8px;
 }
 
@@ -671,9 +671,12 @@ button:disabled {
 }
 
 .day-switcher strong {
+  min-width: 0;
   color: #111827;
   font-size: 14px;
+  line-height: 1.15;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .day-switcher button {
@@ -740,6 +743,7 @@ button:disabled {
   color: #111827;
   font-size: 14px;
   line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .selected-day-strip {
@@ -1040,6 +1044,30 @@ audio {
 .card-filter button.starred-filter.active {
   border-color: #92400e;
   background: #92400e;
+  color: #ffffff;
+}
+
+.card-filter button.review-filter {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.card-filter button.review-filter.active {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.card-filter button.reviewed-filter {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #047857;
+}
+
+.card-filter button.reviewed-filter.active {
+  border-color: #047857;
+  background: #047857;
   color: #ffffff;
 }
 
@@ -1428,6 +1456,12 @@ audio {
   border-color: #facc15;
   background: #fffbeb;
   color: #92400e;
+}
+
+.card-toggle.reviewed {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #047857;
 }
 
 .card-toggle.danger {

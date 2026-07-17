@@ -399,7 +399,7 @@ describe("organizing workflow", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
 
     const [
-      { openDb, createAudioAsset, createRecording, upsertTranscript, getCardsForPeriod, searchCards, setCardStarred },
+      { openDb, createAudioAsset, createRecording, upsertTranscript, getCardsForPeriod, searchCards, setCardReviewed, setCardStarred },
       { MockLLMProvider },
       workflows,
       { dayKey }
@@ -461,9 +461,18 @@ describe("organizing workflow", () => {
     const searchResult = searchCards(handle, "手机体验", 10)[0];
     expect(searchResult?.id).toBe(starredTarget!.id);
     expect(searchResult?.starred).toBe(true);
+    expect(searchResult?.reviewed).toBe(false);
+
+    const reviewed = setCardReviewed(handle, starredTarget!.id, true);
+    expect(reviewed?.reviewed).toBe(true);
+    expect(reviewed?.starred).toBe(true);
 
     const unstarred = setCardStarred(handle, starredTarget!.id, false);
     expect(unstarred?.starred).toBe(false);
+    expect(unstarred?.reviewed).toBe(true);
+
+    const unreviewed = setCardReviewed(handle, starredTarget!.id, false);
+    expect(unreviewed?.reviewed).toBe(false);
 
     handle.db.close();
     await fs.rm(dataDir, { recursive: true, force: true });
